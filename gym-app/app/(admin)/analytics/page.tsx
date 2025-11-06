@@ -2,34 +2,69 @@
 import { useEffect, useMemo, useState } from 'react';
 import AnalyticsCard from '@/components/admin/AnalyticsCard';
 import { UserIcon, ChartPieIcon, SparklesIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '@/hooks/useAuth';
+import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 
-interface User { id: number; name: string; username: string; goal?: string; activityLevel?: string; }
+interface User { _id: string; name: string; email?: string; username?: string; goal?: string; activityLevel?: string; }
 
 export default function AnalyticsPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedId, setSelectedId] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [overview, setOverview] = useState<any>(null);
+  const [trends, setTrends] = useState<Array<{ date: string; workouts: number; meals: number; activeUsers: number }>>([]);
+  const [userMetrics, setUserMetrics] = useState<any>(null);
+  const { accessToken } = useAuth();
 
   useEffect(() => {
-    const stored = JSON.parse(localStorage.getItem('users') || '[]');
-    setUsers(stored);
-  }, []);
+    async function bootstrap() {
+      try {
+        const token = accessToken();
+        // Load users for selector
+        const resUsers = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const jsonUsers = await resUsers.json();
+        if (jsonUsers.ok) setUsers(jsonUsers.data.users || []);
 
-  const user = users.find(u => String(u.id) === selectedId);
+        // Load platform overview & trends
+        const [resOverview, resTrends] = await Promise.all([
+          fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analytics/overview`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analytics/trends?days=30`, { headers: { Authorization: `Bearer ${token}` } })
+        ]);
+        const jsonOverview = await resOverview.json();
+        const jsonTrends = await resTrends.json();
+        if (jsonOverview.ok) setOverview(jsonOverview.data);
+        if (jsonTrends.ok) setTrends(jsonTrends.data.series || []);
+      } catch (e) {
+        console.error('Failed to load users for analytics', e);
+      }
+    }
+    bootstrap();
+  }, [accessToken]);
 
-  // Simple derived metrics to make the UI feel alive without backend
-  const metrics = useMemo(() => {
-    if (!user) return {
-      adherence: 0,
-      plans: 0,
-      activeDays: 0,
-    };
-    const seed = (user.username?.length || 5) + (user.goal?.length || 3);
-    return {
-      adherence: 70 + (seed % 21), // 70-90%
-      plans: 5 + (seed % 6),       // 5-10
-      activeDays: 12 + (seed % 7), // 12-18 over last 30
-    };
-  }, [user]);
+  const user = users.find(u => String(u._id) === selectedId);
+
+  // Load per-user analytics when selection changes
+  useEffect(() => {
+    async function loadUserMetrics() {
+      if (!user) { setUserMetrics(null); return; }
+      try {
+        setLoading(true);
+        const token = accessToken();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analytics/user/${user._id}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const json = await res.json();
+        if (json.ok) setUserMetrics(json.data);
+      } catch (e) {
+        console.error('Failed to load user analytics', e);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadUserMetrics();
+  }, [user, accessToken]);
 
   return (
     <div className="space-y-5">
@@ -54,7 +89,7 @@ export default function AnalyticsPage() {
                 <>
                   <option value="">Select a user…</option>
                   {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.name} (@{u.username})</option>
+                    <option key={u._id} value={u._id}>{u.name} (@{u.username || u.email || 'user'})</option>
                   ))}
                 </>
               )}
@@ -63,21 +98,47 @@ export default function AnalyticsPage() {
         </div>
       </div>
 
+      {/* Platform Overview KPIs */}
+      {overview && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+          <AnalyticsCard title="Users" value={overview.usersCount} subtitle="Total" Icon={UserIcon} accent="blue" />
+          <AnalyticsCard title="Workout Plans" value={overview.workoutPlansCount} subtitle="Total" Icon={SparklesIcon} accent="purple" />
+          <AnalyticsCard title="Diet Plans" value={overview.dietPlansCount} subtitle="Total" Icon={ChartPieIcon} accent="blue" />
+          <AnalyticsCard title="Active (7d)" value={overview.activeUsers7d} subtitle="Unique users" Icon={CalendarDaysIcon} accent="green" />
+        </div>
+      )}
+
       {/* Per-user KPI cards or empty-state prompt */}
       {user ? (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
-          <AnalyticsCard title="Plan Adherence" value={`${metrics.adherence}%`} subtitle="Last 30 days" Icon={ChartPieIcon} accent="amber" />
-          <AnalyticsCard title="Plans Generated" value={metrics.plans} subtitle="Total" Icon={SparklesIcon} accent="blue" />
-          <AnalyticsCard title="Active Days" value={metrics.activeDays} subtitle="Last 30 days" Icon={CalendarDaysIcon} accent="green" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+          <AnalyticsCard title="Workouts" value={userMetrics?.workoutsCompleted ?? 0} subtitle="Last 30 days" Icon={SparklesIcon} accent="green" />
+          <AnalyticsCard title="Meals Logged" value={userMetrics?.totalMealsLogged ?? 0} subtitle="Last 30 days" Icon={ChartPieIcon} accent="amber" />
+          <AnalyticsCard title="Active Days" value={userMetrics?.activeDays ?? 0} subtitle="Last 30 days" Icon={CalendarDaysIcon} accent="green" />
+          <AnalyticsCard title="Streak" value={userMetrics?.currentStreak ?? 0} subtitle="Current" Icon={UserIcon} accent="rose" />
         </div>
       ) : (
         <div className="bg-white rounded-xl shadow p-4 text-sm text-gray-700">Select a user from the dropdown to view analytics.</div>
       )}
 
-      {/* Trend placeholders (future) */}
+      {/* Platform Trends */}
       <div className="bg-white rounded-xl shadow p-4">
-        <h3 className="text-sm font-semibold text-gray-800 mb-1">Trends</h3>
-        <p className="text-xs text-gray-500">Detailed charts coming soon. This section will visualize progress, calories, and workout frequency.</p>
+        <h3 className="text-sm font-semibold text-gray-800 mb-3">Platform Trends (30 days)</h3>
+        {trends.length === 0 ? (
+          <p className="text-xs text-gray-500">No data available.</p>
+        ) : (
+          <div style={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer>
+              <LineChart data={trends}>
+                <XAxis dataKey="date" hide />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="workouts" stroke="#10B981" name="Workouts" strokeWidth={2} dot={false} />
+                <Line type="monotone" dataKey="meals" stroke="#6366F1" name="Meals" strokeWidth={2} dot={false} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
     </div>
   );

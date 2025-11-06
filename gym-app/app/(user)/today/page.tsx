@@ -1,67 +1,46 @@
 'use client';
 
-import { useState } from 'react';
 import Link from 'next/link';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import MealCard from '@/components/user/MealCard';
 import ExerciseCard from '@/components/user/ExerciseCard';
-
-interface Exercise {
-  name: string;
-  sets: number;
-  reps: string;
-  rest: number;
-}
-
-interface Meal {
-  name: string;
-  time: string;
-  calories: number;
-  foods: { name: string; portion: string }[];
-  macros: { protein: number; carbs: number; fats: number };
-}
+import { useWorkoutPlans } from '@/hooks/useWorkoutPlan';
+import { useDietPlan } from '@/hooks/useDietPlan';
 
 export default function TodayPage() {
-  const [exercises] = useState<Exercise[]>([
-    {
-      name: 'Barbell Bench Press',
-      sets: 4,
-      reps: '8-10',
-      rest: 90
-    },
-    {
-      name: 'Incline Dumbbell Press',
-      sets: 3,
-      reps: '10-12',
-      rest: 60
-    },
-    {
-      name: 'Cable Flyes',
-      sets: 3,
-      reps: '12-15',
-      rest: 60
-    },
-    {
-      name: 'Tricep Dips',
-      sets: 3,
-      reps: '8-10',
-      rest: 60
-    }
-  ]);
+  const { plans: workoutPlans, loading: workoutLoading } = useWorkoutPlans();
+  const { plans: dietPlans, loading: dietLoading } = useDietPlan();
 
-  const [meals, setMeals] = useState<Meal[]>([
-    {
-      name: 'Breakfast',
-      time: '7:30 AM',
-      calories: 689,
-      foods: [
-        { name: 'Oatmeal', portion: '1 cup' },
-        { name: 'Banana', portion: '1 medium' },
-      ],
-      macros: { protein: 35, carbs: 85, fats: 15 }
-    },
-    // Add more meals as needed
-  ]);
+  const latestWorkout = workoutPlans?.[0];
+  const latestDiet = dietPlans?.[0];
+
+  // Get today's workout using plan startDate and index fallback
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const todayName = dayNames[new Date().getDay()];
+  let todayWorkout: any = null;
+  if (latestWorkout?.startDate && Array.isArray(latestWorkout?.days) && latestWorkout.days.length > 0) {
+    const start = new Date(latestWorkout.startDate);
+    start.setHours(0,0,0,0);
+    const now = new Date();
+    now.setHours(0,0,0,0);
+    const diffDays = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+    if (diffDays >= 0) {
+      const idx = diffDays % latestWorkout.days.length;
+      todayWorkout = latestWorkout.days[idx];
+    }
+  }
+
+  const exercises = todayWorkout?.exercises || [];
+  const meals = latestDiet?.meals || [];
+  const isRestDay = !exercises || exercises.length === 0;
+
+  if (workoutLoading || dietLoading) {
+    return (
+      <div className="space-y-6">
+        <Card><CardBody><p className="text-center py-8 text-gray-500">Loading today's plans...</p></CardBody></Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -76,7 +55,7 @@ export default function TodayPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                 </svg>
               </div>
-              <p className="text-2xl font-bold text-gray-800">4</p>
+              <p className="text-2xl font-bold text-gray-800">{isRestDay ? 0 : exercises.length}</p>
               <p className="text-xs text-gray-500 mt-1">Exercises</p>
             </div>
             
@@ -88,7 +67,7 @@ export default function TodayPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.879 16.121A3 3 0 1012.015 11L11 14H9c0 .768.293 1.536.879 2.121z" />
                 </svg>
               </div>
-              <p className="text-2xl font-bold text-gray-800">2800</p>
+              <p className="text-2xl font-bold text-gray-800">{latestDiet?.dailyCalories || 0}</p>
               <p className="text-xs text-gray-500 mt-1">Target Cal</p>
             </div>
             
@@ -98,8 +77,8 @@ export default function TodayPage() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
-              <p className="text-2xl font-bold text-gray-800">5</p>
-              <p className="text-xs text-gray-500 mt-1">Active Days</p>
+              <p className="text-2xl font-bold text-gray-800">{workoutPlans?.length || 0}</p>
+              <p className="text-xs text-gray-500 mt-1">Active Plans</p>
             </div>
           </div>
         </CardBody>
@@ -107,49 +86,85 @@ export default function TodayPage() {
 
       {/* Workout Section */}
       <section>
-        <h2 className="text-xl font-bold mb-4">Today's Workout</h2>
-        <div className="space-y-4">
-          {exercises.map((exercise, index) => (
-            <ExerciseCard
-              key={index}
-              name={exercise.name}
-              sets={String(exercise.sets)}
-              reps={exercise.reps}
-              rest={exercise.rest}
-            />
-          ))}
-        </div>
-        
-        {/* Start Workout Button */}
-        <div className="mt-6 flex justify-end">
-          <Link href="/workout/today">
-            <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-2.5 rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 hover:from-green-600 hover:to-green-700">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Start Workout
-            </button>
-          </Link>
-        </div>
+  <h2 className="text-xl font-bold mb-4">Today's Workout - {todayWorkout?.day || todayName}</h2>
+        {isRestDay ? (
+          <Card>
+            <CardBody>
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">😴</div>
+                <h3 className="text-xl font-bold mb-2">Rest Day</h3>
+                <p className="text-gray-600">No workout scheduled for today. Take time to recover!</p>
+              </div>
+            </CardBody>
+          </Card>
+        ) : exercises.length > 0 ? (
+          <>
+            <div className="space-y-4">
+              {exercises.map((exercise: any, index: number) => (
+                <ExerciseCard
+                  key={index}
+                  name={exercise.name}
+                  sets={String(exercise.sets)}
+                  reps={exercise.reps}
+                  rest={exercise.rest}
+                />
+              ))}
+            </div>
+            
+            {/* Start Workout Button */}
+            <div className="mt-6 flex justify-end">
+              <Link href="/workout?start=true">
+                <button className="bg-gradient-to-r from-green-500 to-green-600 text-white px-6 py-2.5 rounded-lg font-semibold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 hover:from-green-600 hover:to-green-700">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Start Workout
+                </button>
+              </Link>
+            </div>
+          </>
+        ) : (
+          <Card>
+            <CardBody>
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">💪</div>
+                <h3 className="text-xl font-bold mb-2">No Workout Plan Yet</h3>
+                <p className="text-gray-600">Contact your trainer to get a personalized workout plan.</p>
+              </div>
+            </CardBody>
+          </Card>
+        )}
       </section>
 
       {/* Meals Section */}
       <section>
         <h2 className="text-xl font-bold mb-4">Today's Meals</h2>
-        <div className="space-y-4">
-          {meals.map((meal, index) => (
-            <MealCard
-              key={index}
-              mealName={meal.name}
-              time={meal.time}
-              calories={meal.calories}
-              foods={meal.foods}
-              macros={meal.macros}
-              onLog={() => alert(`Logged ${meal.name}`)}
-            />
-          ))}
-        </div>
+        {meals.length > 0 ? (
+          <div className="space-y-4">
+            {meals.map((meal: any, index: number) => (
+              <MealCard
+                key={index}
+                mealName={meal.name}
+                time={meal.time}
+                calories={meal.calories}
+                foods={meal.foods || []}
+                macros={meal.macros || { protein: 0, carbs: 0, fats: 0 }}
+                onLog={() => alert(`Logged ${meal.name}`)}
+              />
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardBody>
+              <div className="text-center py-8">
+                <div className="text-5xl mb-4">🍽️</div>
+                <h3 className="text-xl font-bold mb-2">No Diet Plan Yet</h3>
+                <p className="text-gray-600">Contact your trainer to get a personalized nutrition plan.</p>
+              </div>
+            </CardBody>
+          </Card>
+        )}
       </section>
     </div>
   );

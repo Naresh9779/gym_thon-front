@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { HomeIcon, ChartBarIcon, PlusCircleIcon, UsersIcon, Bars3Icon, XMarkIcon } from '@heroicons/react/24/outline';
 
 export default function AdminNavigation() {
@@ -17,7 +16,7 @@ export default function AdminNavigation() {
 
   return (
     <>
-      <header className="bg-white shadow-sm">
+  <header className="sticky top-0 z-40 bg-white border-b shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center gap-3">
@@ -28,10 +27,14 @@ export default function AdminNavigation() {
               >
                 <Bars3Icon className="w-6 h-6 text-gray-700" />
               </button>
-              <div className="flex items-center">
-                <Image src="/logo.svg" alt="FitFlow" width={36} height={36} />
-                <span className="ml-2 text-xl font-bold text-gray-800">Admin</span>
-              </div>
+              <Link href="/dashboard" aria-label="Go to admin dashboard" className="flex items-center hover:opacity-90">
+                <div className="w-9 h-9 bg-green-500 rounded-lg flex items-center justify-center">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                  </svg>
+                </div>
+                <span className="ml-2 text-xl font-bold text-gray-800">FitFlow Admin</span>
+              </Link>
             </div>
 
             <div className="hidden sm:flex items-center space-x-4">
@@ -50,17 +53,21 @@ export default function AdminNavigation() {
       </header>
 
       {/* Sidebar overlay */}
-      <div className={`fixed inset-0 z-40 transition-opacity ${open ? 'visible' : 'pointer-events-none'}`} aria-hidden={!open}>
+  <div className={`fixed inset-0 z-50 transition-opacity ${open ? 'visible' : 'pointer-events-none'}`} aria-hidden={!open}>
         <div className={`absolute inset-0 bg-black/40 ${open ? 'opacity-100' : 'opacity-0'}`} onClick={() => setOpen(false)} />
         <aside className={`absolute left-0 top-0 bottom-0 w-72 bg-white shadow-md transform ${open ? 'translate-x-0' : '-translate-x-full'} transition-transform`}>
           <div className="p-6">
             <div className="flex items-center gap-3 mb-6">
-              <Image src="/logo.svg" alt="FitFlow" width={40} height={40} />
-              <div>
+              <div className="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center flex-shrink-0">
+                <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                </svg>
+              </div>
+              <div className="flex-1">
                 <h3 className="text-lg font-bold">FitFlow</h3>
                 <p className="text-sm text-gray-500">Admin</p>
               </div>
-              <button onClick={() => setOpen(false)} aria-label="Close menu" className="ml-auto p-1 rounded hover:bg-gray-100">
+              <button onClick={() => setOpen(false)} aria-label="Close menu" className="p-1 rounded hover:bg-gray-100 flex-shrink-0">
                 <XMarkIcon className="w-5 h-5 text-gray-600" />
               </button>
             </div>

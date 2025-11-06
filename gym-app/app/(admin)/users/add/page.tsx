@@ -31,7 +31,7 @@ export default function AddUserPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -46,48 +46,54 @@ export default function AddUserPage() {
       setError('Password must be at least 6 characters');
       return;
     }
+    try {
+      // Map UI goal to backend allowed enums
+      const goalMap: Record<string, string> = {
+        muscle_gain: 'muscle_gain',
+        weight_loss: 'weight_loss',
+        endurance: 'endurance',
+        strength: 'maintenance',
+        general_fitness: 'maintenance',
+      };
+      const mappedGoal = goalMap[formData.goal] || 'maintenance';
 
-    // Store user in localStorage (in real app, this would be an API call)
-    const users = JSON.parse(localStorage.getItem('users') || '[]');
-    
-    // Check if username already exists
-    if (users.some((u: any) => u.username === formData.username)) {
-      setError('Username already exists');
-      return;
+      // Build payload for admin create API
+      const payload: any = {
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        profile: {
+          age: formData.age ? Number(formData.age) : undefined,
+          weight: formData.weight ? Number(formData.weight) : undefined,
+          height: formData.height ? Number(formData.height) : undefined,
+          activityLevel: formData.activityLevel,
+          goals: [mappedGoal],
+        },
+      };
+
+      // Auth token from storage
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        setError(json?.error?.message || 'Failed to create user');
+        return;
+      }
+
+      alert(`User ${formData.name} added successfully!`);
+      // Redirect back to users list
+      window.location.href = '/users';
+    } catch (err: any) {
+      console.error('Create user failed', err);
+      setError('Failed to create user');
     }
-
-    const newUser = {
-      id: Date.now(),
-      name: formData.name,
-      username: formData.username,
-      email: formData.email,
-      password: formData.password, // In real app, this would be hashed
-      age: formData.age,
-      weight: formData.weight,
-      height: formData.height,
-      goal: formData.goal,
-      activityLevel: formData.activityLevel,
-      createdAt: new Date().toISOString()
-    };
-
-    users.push(newUser);
-    localStorage.setItem('users', JSON.stringify(users));
-
-    alert(`User ${formData.name} added successfully!`);
-    
-    // Reset form
-    setFormData({
-      name: '',
-      username: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-      age: '',
-      weight: '',
-      height: '',
-      goal: 'muscle_gain',
-      activityLevel: 'moderate'
-    });
   };
 
   return (

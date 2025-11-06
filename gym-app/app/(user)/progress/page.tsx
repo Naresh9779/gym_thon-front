@@ -1,34 +1,73 @@
  'use client';
 
-import { useState } from 'react';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import ProgressChart from '@/components/user/ProgressChart';
+import { useWorkoutPlans } from '@/hooks/useWorkoutPlan';
+import { useDietPlan } from '@/hooks/useDietPlan';
+import { useUserProgress } from '@/hooks/useUserProgress';
+import { useEffect, useState } from 'react';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function ProgressPage() {
-  const [completed, setCompleted] = useState(3);
-  const total = 6;
+  const { plans: workoutPlans, loading: workoutLoading } = useWorkoutPlans();
+  const { plans: dietPlans, loading: dietLoading } = useDietPlan();
+  const { stats, loading: progressLoading } = useUserProgress();
+  const { accessToken } = useAuth();
+  const [trendData, setTrendData] = useState<{ date: string; value: number }[]>([]);
+
+  const latestWorkout = workoutPlans?.[0];
+  const latestDiet = dietPlans?.[0];
+
+  useEffect(() => {
+    async function loadTrends() {
+      try {
+        const token = accessToken();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/progress/trends?days=14`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const json = await res.json();
+        if (json.ok) {
+          const series = (json.data.series as Array<{ date: string; workouts: number; meals: number }>);
+          // simple combined metric: workouts*2 + meals
+          const mapped = series.map(d => ({ date: d.date.slice(5), value: d.workouts * 2 + d.meals }));
+          setTrendData(mapped);
+        }
+      } catch (e) {
+        // ignore chart errors
+      }
+    }
+    loadTrends();
+  }, [accessToken]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold">Progress</h1>
 
       <Card>
-        <CardHeader title="Today's Progress" subtitle="Exercise completion and active days" />
+        <CardHeader title="Overall Progress" subtitle="Your fitness journey stats" />
         <CardBody>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="text-center">
-              <p className="text-4xl font-bold text-green-600">{Math.round((completed / total) * 100)}%</p>
-              <p className="text-sm text-gray-500">Daily Progress</p>
+          {workoutLoading || dietLoading || progressLoading ? (
+            <p className="text-center py-8 text-gray-500">Loading progress...</p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="text-center">
+                <p className="text-4xl font-bold text-green-600">{stats.currentStreak}</p>
+                <p className="text-sm text-gray-500">Day Streak</p>
+              </div>
+              <div className="text-center">
+                <p className="text-4xl font-bold">{stats.workoutsCompleted}</p>
+                <p className="text-sm text-gray-500">Workouts Done</p>
+              </div>
+              <div className="text-center">
+                <p className="text-4xl font-bold">{stats.totalMealsLogged}</p>
+                <p className="text-sm text-gray-500">Meals Logged</p>
+              </div>
+              <div className="text-center">
+                <p className="text-4xl font-bold">{stats.activeDays}</p>
+                <p className="text-sm text-gray-500">Active Days</p>
+              </div>
             </div>
-            <div className="text-center">
-              <p className="text-4xl font-bold">{completed}</p>
-              <p className="text-sm text-gray-500">Exercises Completed</p>
-            </div>
-            <div className="text-center">
-              <p className="text-4xl font-bold">5</p>
-              <p className="text-sm text-gray-500">Active Days</p>
-            </div>
-          </div>
+          )}
         </CardBody>
       </Card>
 
@@ -37,14 +76,19 @@ export default function ProgressPage() {
         <CardBody>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <ul className="space-y-2 text-sm text-gray-700">
-                <li>Completed: Barbell Bench Press</li>
-                <li>Logged meal: Breakfast (+689 kcal)</li>
-                <li>Completed: Incline Dumbbell Press</li>
-              </ul>
+              {workoutLoading || dietLoading ? (
+                <p className="text-gray-500 text-sm">Loading activity...</p>
+              ) : (
+                <ul className="space-y-2 text-sm text-gray-700">
+                  {latestWorkout && <li>Current Workout: {latestWorkout.name}</li>}
+                  {latestDiet && <li>Daily Target: {latestDiet.dailyCalories} kcal</li>}
+                  <li>Last 30 Days: {stats.workoutsCompleted} workouts, {stats.totalMealsLogged} meals</li>
+                  <li>Active days: {stats.activeDays}</li>
+                </ul>
+              )}
             </div>
             <div>
-              <ProgressChart />
+              <ProgressChart data={trendData} />
             </div>
           </div>
         </CardBody>

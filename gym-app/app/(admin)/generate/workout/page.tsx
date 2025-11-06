@@ -3,18 +3,22 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { UserGroupIcon, AcademicCapIcon, CalendarIcon, FireIcon, SparklesIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '@/hooks/useAuth';
 
-interface User {
-  id: number;
+interface AdminUserItem {
+  _id: string;
   name: string;
-  username: string;
-  age: string;
-  weight: string;
-  goal: string;
+  email: string;
+  role?: string;
+  profile?: {
+    age?: number;
+    weight?: number;
+    goals?: string[];
+  };
 }
 
 export default function AdminGenerateWorkout() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [formData, setFormData] = useState({
     goal: 'muscle_gain',
@@ -23,20 +27,52 @@ export default function AdminGenerateWorkout() {
     preferences: '',
   });
 
+  const { accessToken } = useAuth();
+
   useEffect(() => {
-    const storedUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    setUsers(storedUsers);
-  }, []);
+    async function fetchUsers() {
+      try {
+        const token = accessToken();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (json.ok) setUsers(json.data.users || []);
+      } catch (e) {
+        console.error('Failed to load users for generation', e);
+      }
+    }
+    fetchUsers();
+  }, [accessToken]);
 
-  const selectedUser = users.find(u => u.id.toString() === selectedUserId);
+  const selectedUser = users.find(u => u._id === selectedUserId);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserId) {
       alert('Please select a user');
       return;
     }
-    alert(`🎉 Workout plan generated successfully for ${selectedUser?.name}!`);
+    try {
+      const token = accessToken();
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      const startDate = `${yyyy}-${mm}-${dd}`;
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${selectedUserId}/generate-workout-cycle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ startDate, durationWeeks: 4 }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error?.message || `Failed with status ${res.status}`);
+      }
+      alert(`🎉 Workout plan generated successfully for ${selectedUser?.name}.`);
+    } catch (err: any) {
+      alert(`Failed to generate workout plan: ${err.message || 'Unknown error'}`);
+    }
   };
 
   const goals = [
@@ -97,8 +133,8 @@ export default function AdminGenerateWorkout() {
                 >
                   <option value="">-- Choose a client --</option>
                   {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} (@{user.username})
+                    <option key={user._id} value={user._id}>
+                      {user.name} ({user.email})
                     </option>
                   ))}
                 </select>
@@ -113,15 +149,15 @@ export default function AdminGenerateWorkout() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="bg-white p-2.5 rounded-lg">
                       <p className="text-xs text-gray-500 mb-1">Age</p>
-                      <p className="text-base font-bold text-gray-800">{selectedUser.age || 'N/A'}</p>
+                      <p className="text-base font-bold text-gray-800">{selectedUser.profile?.age ?? 'N/A'}</p>
                     </div>
                     <div className="bg-white p-2.5 rounded-lg">
                       <p className="text-xs text-gray-500 mb-1">Weight</p>
-                      <p className="text-base font-bold text-gray-800">{selectedUser.weight || 'N/A'} kg</p>
+                      <p className="text-base font-bold text-gray-800">{selectedUser.profile?.weight ?? 'N/A'} kg</p>
                     </div>
                     <div className="bg-white p-2.5 rounded-lg col-span-2">
                       <p className="text-xs text-gray-500 mb-1">Goal</p>
-                      <p className="text-base font-bold text-green-600 capitalize">{selectedUser.goal.replace('_', ' ')}</p>
+                      <p className="text-base font-bold text-green-600 capitalize">{selectedUser.profile?.goals?.[0]?.replace('_', ' ') || 'N/A'}</p>
                     </div>
                   </div>
                 </div>

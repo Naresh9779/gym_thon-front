@@ -1,18 +1,23 @@
 "use client"
 import React, { useState } from 'react'
-import { CalendarIcon, ScaleIcon, BeakerIcon } from '@heroicons/react/24/outline'
+import { CalendarIcon, ScaleIcon } from '@heroicons/react/24/outline'
 
 interface Props {
-  initial?: { age?: number; weight?: number; bodyFat?: number }
+  initial?: { age?: number; weight?: number; height?: number }
+  onSave?: (stats: { age?: number; weight?: number; height?: number }) => void
 }
 
-export default function UserStatsForm({ initial }: Props) {
+export default function UserStatsForm({ initial, onSave }: Props) {
   const [age, setAge] = useState(initial?.age ?? 30)
   const [weight, setWeight] = useState(initial?.weight ?? 75)
-  const [bodyFat, setBodyFat] = useState(initial?.bodyFat ?? 18)
+  const [height, setHeight] = useState(initial?.height ?? 170)
 
   const handleSave = () => {
-    alert(`Saved: age=${age}, weight=${weight}, bodyFat=${bodyFat}`)
+    if (onSave) {
+      onSave({ age, weight, height });
+    } else {
+      alert(`Saved: age=${age}, weight=${weight}, height=${height}`)
+    }
   }
 
   return (
@@ -42,14 +47,17 @@ export default function UserStatsForm({ initial }: Props) {
           />
         </div>
       </div>
+      {/* Body fat field removed per requirements */}
       <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">Body Fat (%)</label>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Height (cm)</label>
         <div className="relative">
-          <BeakerIcon className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <svg className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+          </svg>
           <input
             type="number"
-            value={bodyFat}
-            onChange={e => setBodyFat(Number(e.target.value))}
+            value={height}
+            onChange={e => setHeight(Number(e.target.value))}
             className="w-full pl-9 pr-3 py-2.5 border-2 border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all"
             step={0.1}
           />

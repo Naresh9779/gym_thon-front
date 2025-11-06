@@ -3,21 +3,34 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import UserCard from '@/components/admin/UserCard';
+import { useAuth } from '@/hooks/useAuth';
 
-interface User {
-  id: number;
+interface UserItem {
+  _id: string;
   name: string;
   email: string;
-  username: string;
+  role: string;
 }
 
 export default function AdminUsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserItem[]>([]);
+  const { accessToken } = useAuth();
 
   useEffect(() => {
-    const storedUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    setUsers(storedUsers);
-  }, []);
+    async function fetchUsers() {
+      try {
+        const token = accessToken();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const json = await res.json();
+        if (json.ok) setUsers(json.data.users || []);
+      } catch (e) {
+        console.error('Failed to load admin users', e);
+      }
+    }
+    fetchUsers();
+  }, [accessToken]);
 
   return (
     <div className="space-y-5">
@@ -49,7 +62,7 @@ export default function AdminUsersPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {users.map((u) => (
-            <UserCard key={u.id} id={u.id} name={u.name} email={u.email} />
+            <UserCard key={u._id} id={u._id} name={u.name} email={u.email} />
           ))}
         </div>
       )}

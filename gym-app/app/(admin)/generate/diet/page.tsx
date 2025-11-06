@@ -3,20 +3,24 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { UserGroupIcon, CurrencyRupeeIcon, HeartIcon, SparklesIcon, FireIcon } from '@heroicons/react/24/outline';
+import { useAuth } from '@/hooks/useAuth';
 
-interface User {
-  id: number;
+interface AdminUserItem {
+  _id: string;
   name: string;
-  username: string;
-  age: string;
-  weight: string;
-  height: string;
-  goal: string;
-  activityLevel: string;
+  email: string;
+  role?: string;
+  profile?: {
+    age?: number;
+    weight?: number;
+    height?: number;
+    activityLevel?: string;
+    goals?: string[];
+  };
 }
 
 export default function AdminGenerateDiet() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<AdminUserItem[]>([]);
   const [selectedUserId, setSelectedUserId] = useState('');
   const [formData, setFormData] = useState({
     goal: 'muscle_gain',
@@ -27,20 +31,48 @@ export default function AdminGenerateDiet() {
     preferences: '',
   });
 
+  const { accessToken } = useAuth();
+
   useEffect(() => {
-    const storedUsers = JSON.parse(localStorage.getItem('users') || '[]');
-    setUsers(storedUsers);
-  }, []);
+    async function fetchUsers() {
+      try {
+        const token = accessToken();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = await res.json();
+        if (json.ok) setUsers(json.data.users || []);
+      } catch (e) {
+        console.error('Failed to load users for generation', e);
+      }
+    }
+    fetchUsers();
+  }, [accessToken]);
 
-  const selectedUser = users.find(u => u.id.toString() === selectedUserId);
+  const selectedUser = users.find(u => u._id === selectedUserId);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserId) {
       alert('Please select a user');
       return;
     }
-    alert(`🎉 Diet plan generated successfully for ${selectedUser?.name}!`);
+    try {
+      const token = accessToken();
+      // Generate diet plan for today for the selected user
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${selectedUserId}/generate-diet-daily`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({}),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error?.message || `Failed with status ${res.status}`);
+      }
+      alert(`🎉 Diet plan ${json.data?.alreadyExists ? 'already exists' : 'generated'} for ${selectedUser?.name}.`);
+    } catch (err: any) {
+      alert(`Failed to generate diet plan: ${err.message || 'Unknown error'}`);
+    }
   };
 
   const dietTypes = [
@@ -101,8 +133,8 @@ export default function AdminGenerateDiet() {
                 >
                   <option value="">-- Choose a client --</option>
                   {users.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {user.name} (@{user.username})
+                    <option key={user._id} value={user._id}>
+                      {user.name} ({user.email})
                     </option>
                   ))}
                 </select>
@@ -117,19 +149,19 @@ export default function AdminGenerateDiet() {
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     <div className="bg-white p-2.5 rounded-lg">
                       <p className="text-xs text-gray-500 mb-1">Age</p>
-                      <p className="text-base font-bold text-gray-800">{selectedUser.age || 'N/A'}</p>
+                      <p className="text-base font-bold text-gray-800">{selectedUser.profile?.age ?? 'N/A'}</p>
                     </div>
                     <div className="bg-white p-2.5 rounded-lg">
                       <p className="text-xs text-gray-500 mb-1">Weight</p>
-                      <p className="text-base font-bold text-gray-800">{selectedUser.weight || 'N/A'} kg</p>
+                      <p className="text-base font-bold text-gray-800">{selectedUser.profile?.weight ?? 'N/A'} kg</p>
                     </div>
                     <div className="bg-white p-2.5 rounded-lg">
                       <p className="text-xs text-gray-500 mb-1">Height</p>
-                      <p className="text-base font-bold text-gray-800">{selectedUser.height || 'N/A'} cm</p>
+                      <p className="text-base font-bold text-gray-800">{selectedUser.profile?.height ?? 'N/A'} cm</p>
                     </div>
                     <div className="bg-white p-2.5 rounded-lg">
                       <p className="text-xs text-gray-500 mb-1">Activity</p>
-                      <p className="text-base font-bold text-green-600 capitalize">{selectedUser.activityLevel || 'N/A'}</p>
+                      <p className="text-base font-bold text-green-600 capitalize">{selectedUser.profile?.activityLevel || 'N/A'}</p>
                     </div>
                   </div>
                 </div>
