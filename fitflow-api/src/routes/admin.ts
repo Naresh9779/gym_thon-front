@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth';
+import { planGenerationLimiter, aiOperationLimiter } from '../middleware/rateLimiter';
 import User from '../models/User';
 import WorkoutPlan from '../models/WorkoutPlan';
 import DietPlan from '../models/DietPlan';
@@ -217,7 +218,8 @@ router.get('/metrics', async (_req, res) => {
 });
 
 // POST /api/admin/users/:userId/generate-workout-cycle - generate workout plan for a user
-router.post('/users/:userId/generate-workout-cycle', async (req, res) => {
+// Rate limited to prevent spam and excessive API usage
+router.post('/users/:userId/generate-workout-cycle', planGenerationLimiter, aiOperationLimiter, async (req, res) => {
   try {
     const schema = z.object({
       startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -332,7 +334,8 @@ router.post('/users/:userId/generate-diet', async (req, res) => {
 });
 
 // POST /api/admin/users/:userId/generate-diet-daily - generate diet for today if not exists
-router.post('/users/:userId/generate-diet-daily', async (req, res) => {
+// Rate limited to prevent spam and excessive API usage
+router.post('/users/:userId/generate-diet-daily', planGenerationLimiter, aiOperationLimiter, async (req, res) => {
   try {
     const schema = z.object({ previousDayProgressId: z.string().optional() });
     const parsed = schema.safeParse(req.body || {});

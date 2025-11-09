@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useToast } from '@/hooks/useToast';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import {
   UserIcon,
@@ -15,6 +16,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function AddUserPage() {
+  const toast = useToast();
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -89,7 +91,7 @@ export default function AddUserPage() {
         return;
       }
 
-      alert(`User ${formData.name} added successfully!`);
+      toast.success(`User ${formData.name} added successfully!`);
       // Redirect back to users list
       window.location.href = '/users';
     } catch (err: any) {

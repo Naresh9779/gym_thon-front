@@ -6,11 +6,13 @@ import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/useToast';
 import SubscriptionCard from '@/components/user/SubscriptionCard';
 
 export default function ProfilePage() {
   const router = useRouter();
   const { user, logout, refreshUser } = useAuth();
+  const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
     name: user?.name || '',
@@ -86,17 +88,17 @@ export default function ProfilePage() {
       });
 
       if (response.ok) {
-        alert('Profile updated successfully!');
+        toast.success('Profile updated successfully!');
         setIsEditing(false);
         // Refresh user data from backend
         await refreshUser();
       } else {
         const data = await response.json();
-        alert(`Failed to update profile: ${data.error?.message || 'Unknown error'}`);
+        toast.error(`Failed to update profile: ${data.error?.message || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Error updating profile:', error);
-      alert('Failed to update profile. Please try again.');
+      toast.error('Failed to update profile. Please try again.');
     }
   };
 

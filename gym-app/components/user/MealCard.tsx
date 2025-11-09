@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useUserProgress } from '@/hooks/useUserProgress';
+import { useToast } from '@/hooks/useToast';
 
 interface FoodItem { name: string; portion?: string }
 
@@ -16,6 +17,7 @@ interface Props {
 }
 export default function MealCard({ mealName, time, calories, foods = [], macros, onLog, mealId }: Props) {
 	const { logMeal, logs } = useUserProgress();
+	const toast = useToast();
 	const [isLogging, setIsLogging] = useState(false);
 	const [isLogged, setIsLogged] = useState(false);
 
@@ -47,14 +49,14 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
 			if (result && (result as any).success) {
 				setIsLogged(true);
 				if ((result as any).alreadyLogged) {
-					alert(`${mealName} already logged for today.`);
+					toast.info(`${mealName} already logged for today.`);
 				} else {
-					alert(`${mealName} logged successfully!`);
+					toast.success(`${mealName} logged successfully!`);
 				}
 			}
 		} catch (e) {
 			console.error('Failed to log meal:', e);
-			alert('Failed to log meal');
+			toast.error('Failed to log meal');
 		} finally {
 			setIsLogging(false);
 		}

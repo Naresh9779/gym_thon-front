@@ -2,6 +2,7 @@
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/useToast';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -21,6 +22,7 @@ interface DietPlan {
 export default function AdminEditDietPage({ params }: Props) {
   const { planId } = use(params);
   const { accessToken } = useAuth();
+  const toast = useToast();
   const [plan, setPlan] = useState<DietPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -76,10 +78,10 @@ export default function AdminEditDietPage({ params }: Props) {
     });
     const j = await resp.json();
     if (j.ok) {
-      alert('Diet plan updated');
+      toast.success('Diet plan updated');
       window.location.href = `/users/${j.data.dietPlan.userId}`;
     } else {
-      alert(j.error?.message || 'Failed to update plan');
+      toast.error(j.error?.message || 'Failed to update plan');
     }
   };
 

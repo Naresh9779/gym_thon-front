@@ -6,10 +6,12 @@ import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import MealCard from '@/components/user/MealCard';
 import { useDietPlan } from '@/hooks/useDietPlan';
 import { useUserProgress } from '@/hooks/useUserProgress';
+import { useToast } from '@/hooks/useToast';
 
 export default function TodayMealPage() {
   // Temporary redirect to the new /today-diet route
   const router = useRouter();
+  const toast = useToast();
   useEffect(() => { router.replace('/today-diet'); }, [router]);
   const { plans: dietPlans, loading: dietLoading } = useDietPlan();
   const { logMeal, stats, logs } = useUserProgress();
@@ -56,7 +58,7 @@ export default function TodayMealPage() {
     
     if (result.success) {
       if (result.alreadyLogged) {
-        alert(`${meal.name} has already been logged today!`);
+        toast.info(`${meal.name} has already been logged today!`);
       } else {
         const newLogged = new Set(loggedMeals);
         newLogged.add(meal.name.trim().toLowerCase());

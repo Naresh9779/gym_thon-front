@@ -2,6 +2,7 @@
 
 import { useState, useEffect, use } from 'react';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/useToast';
 import UserCard from '@/components/admin/UserCard';
 import UserStatsForm from '@/components/admin/UserStatsForm';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
@@ -55,6 +56,7 @@ interface DietPlan {
 export default function AdminUserDetail({ params }: Props) {
   const { id } = use(params);
   const { accessToken } = useAuth();
+  const toast = useToast();
   const [user, setUser] = useState<UserData | null>(null);
   const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlan[]>([]);
   const [dietPlans, setDietPlans] = useState<DietPlan[]>([]);
@@ -127,17 +129,17 @@ export default function AdminUserDetail({ params }: Props) {
       
       const json = await res.json();
       if (json.ok) {
-        alert('User stats updated successfully!');
+        toast.success('User stats updated successfully!');
         // Refresh user data
         if (user) {
           setUser({ ...user, profile: { ...user.profile, ...stats } });
         }
       } else {
-        alert(`Failed to update: ${json.error?.message || 'Unknown error'}`);
+        toast.error(`Failed to update: ${json.error?.message || 'Unknown error'}`);
       }
     } catch (e) {
       console.error('Failed to update stats:', e);
-      alert('Failed to update user stats');
+      toast.error('Failed to update user stats');
     }
   };
 
@@ -165,18 +167,18 @@ export default function AdminUserDetail({ params }: Props) {
       
       const json = await res.json();
       if (json.ok) {
-        alert('Subscription updated successfully!');
+        toast.success('Subscription updated successfully!');
         setShowSubscriptionModal(false);
         // Refresh user data
         if (json.data?.user) {
           setUser(json.data.user);
         }
       } else {
-        alert(`Failed to update: ${json.error?.message || 'Unknown error'}`);
+        toast.error(`Failed to update: ${json.error?.message || 'Unknown error'}`);
       }
     } catch (e) {
       console.error('Failed to update subscription:', e);
-      alert('Failed to update subscription');
+      toast.error('Failed to update subscription');
     }
   };
 
@@ -325,13 +327,13 @@ export default function AdminUserDetail({ params }: Props) {
                             });
                             const j = await resp.json();
                             if (j.ok) {
-                              alert('Workout plan deleted');
+                              toast.success('Workout plan deleted');
                               setWorkoutPlans(plans => plans.filter(p => p._id !== plan._id));
                             } else {
-                              alert(j.error?.message || 'Failed to delete plan');
+                              toast.error(j.error?.message || 'Failed to delete plan');
                             }
                           } catch (err) {
-                            alert('Failed to delete workout plan');
+                            toast.error('Failed to delete workout plan');
                           }
                         }}
                       >
@@ -401,13 +403,13 @@ export default function AdminUserDetail({ params }: Props) {
                             });
                             const j = await resp.json();
                             if (j.ok) {
-                              alert('Diet plan deleted');
+                              toast.success('Diet plan deleted');
                               setDietPlans(plans => plans.filter(p => p._id !== plan._id));
                             } else {
-                              alert(j.error?.message || 'Failed to delete plan');
+                              toast.error(j.error?.message || 'Failed to delete plan');
                             }
                           } catch (err) {
-                            alert('Failed to delete diet plan');
+                            toast.error('Failed to delete diet plan');
                           }
                         }}
                       >

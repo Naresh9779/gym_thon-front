@@ -2,6 +2,7 @@
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/useToast';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
@@ -22,6 +23,7 @@ interface WorkoutPlan {
 export default function AdminEditWorkoutPage({ params }: Props) {
   const { planId } = use(params);
   const { accessToken } = useAuth();
+  const toast = useToast();
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -69,10 +71,10 @@ export default function AdminEditWorkoutPage({ params }: Props) {
     });
     const j = await resp.json();
     if (j.ok) {
-      alert('Workout plan updated');
+      toast.success('Workout plan updated');
       window.location.href = `/users/${j.data.workoutPlan.userId}`;
     } else {
-      alert(j.error?.message || 'Failed to update plan');
+      toast.error(j.error?.message || 'Failed to update plan');
     }
   };
 
