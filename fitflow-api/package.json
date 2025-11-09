@@ -2,7 +2,6 @@
   "name": "fitflow-api",
   "version": "0.1.0",
   "private": true,
-  
   "main": "dist/server.js",
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
@@ -14,6 +13,7 @@
     "node": ">=18.0.0"
   },
   "dependencies": {
+    "@types/node-cron": "^3.0.11",
     "axios": "^1.7.7",
     "bcrypt": "^5.1.1",
     "cors": "^2.8.5",

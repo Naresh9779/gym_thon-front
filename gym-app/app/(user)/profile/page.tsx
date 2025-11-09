@@ -179,8 +179,12 @@ export default function ProfilePage() {
 
       {/* Subscription Card */}
       <SubscriptionCard
-        planName={user?.subscription?.plan || "Free Plan"}
+        planName={user?.subscription?.plan || "free"}
         price={user?.subscription?.status === 'active' ? "$29.99/month" : "Free"}
+        status={user?.subscription?.status}
+        startDate={user?.subscription?.startDate}
+        endDate={user?.subscription?.endDate}
+        durationMonths={user?.subscription?.durationMonths}
         benefits={[
           'Personalized workout plans',
           'Custom meal plans',

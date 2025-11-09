@@ -12,7 +12,7 @@ interface UserContext {
   height: number;
   gender: 'male' | 'female' | 'other';
   activityLevel: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
-  goal: 'weight_loss' | 'muscle_gain' | 'maintenance' | 'endurance';
+  goals: string[]; // Array of goals
   preferences: string[];
   restrictions: string[];
   timezone: string;
@@ -154,6 +154,9 @@ class DietGenerationService {
     macros: { protein: number; carbs: number; fats: number },
     previousDayProgress?: PreviousDayProgress
   ): string {
+    const primaryGoal = userContext.goals.length > 0 ? userContext.goals[0] : 'maintenance';
+    const allGoals = userContext.goals.length > 0 ? userContext.goals.join(', ') : 'maintenance';
+    
     let prompt = `Generate a personalized daily meal plan for the following user:
 
 **User Profile:**
@@ -162,7 +165,8 @@ class DietGenerationService {
 - Height: ${userContext.height} cm
 - Gender: ${userContext.gender}
 - Activity Level: ${userContext.activityLevel}
-- Goal: ${userContext.goal}
+- Primary Goal: ${primaryGoal}
+- All Goals: ${allGoals}
 
 **Nutritional Targets:**
 - Daily Calories: ${targetCalories} kcal
@@ -299,15 +303,16 @@ ${previousDayProgress.adherenceScore < 70 ? '- Note: Low adherence, suggest easi
         age: user.profile.age,
         weight: user.profile.weight,
         height: user.profile.height,
-    gender: (user.profile.gender as 'male' | 'female' | 'other') || 'other',
-    activityLevel: (user.profile.activityLevel as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active') || 'moderate',
-    goal: (Array.isArray(user.profile.goals) && user.profile.goals.length > 0 ? user.profile.goals[0] : 'maintenance') as 'weight_loss' | 'muscle_gain' | 'maintenance' | 'endurance',
+        gender: (user.profile.gender as 'male' | 'female' | 'other') || 'other',
+        activityLevel: (user.profile.activityLevel as 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active') || 'moderate',
+        goals: Array.isArray(user.profile.goals) ? user.profile.goals : (user.profile.goals ? [user.profile.goals as string] : ['maintenance']),
         preferences: user.profile.preferences || [],
         restrictions: user.profile.restrictions || [],
         timezone: user.profile.timezone || 'UTC',
       };
 
-      // Calculate nutrition targets
+      // Calculate nutrition targets (use primary goal)
+      const primaryGoal = userContext.goals.length > 0 ? userContext.goals[0] : 'maintenance';
       const tdee = this.calculateTDEE(
         userContext.weight,
         userContext.height,
@@ -315,8 +320,8 @@ ${previousDayProgress.adherenceScore < 70 ? '- Note: Low adherence, suggest easi
         userContext.gender,
         userContext.activityLevel
       );
-      const targetCalories = this.calculateTargetCalories(tdee, userContext.goal);
-      const macros = this.calculateMacros(targetCalories, userContext.goal);
+      const targetCalories = this.calculateTargetCalories(tdee, primaryGoal);
+      const macros = this.calculateMacros(targetCalories, primaryGoal);
 
       // Fetch previous day progress if provided
       let previousDayProgress: PreviousDayProgress | undefined;

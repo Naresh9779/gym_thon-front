@@ -13,7 +13,7 @@ export default function ProgressPage() {
   const { plans: dietPlans, loading: dietLoading } = useDietPlan();
   const { stats, loading: progressLoading } = useUserProgress();
   const { accessToken } = useAuth();
-  const [trendData, setTrendData] = useState<{ date: string; value: number }[]>([]);
+  const [trendData, setTrendData] = useState<{ date: string; workouts: number; meals: number; value: number }[]>([]);
 
   const latestWorkout = workoutPlans?.[0];
   const latestDiet = dietPlans?.[0];
@@ -28,8 +28,12 @@ export default function ProgressPage() {
         const json = await res.json();
         if (json.ok) {
           const series = (json.data.series as Array<{ date: string; workouts: number; meals: number }>);
-          // simple combined metric: workouts*2 + meals
-          const mapped = series.map(d => ({ date: d.date.slice(5), value: d.workouts * 2 + d.meals }));
+          const mapped = series.map(d => ({ 
+            date: d.date.slice(5), // MM-DD format
+            workouts: d.workouts, 
+            meals: d.meals,
+            value: d.workouts * 2 + d.meals 
+          }));
           setTrendData(mapped);
         }
       } catch (e) {

@@ -204,10 +204,10 @@ export default function PlansPage() {
               <div className="flex justify-between items-center">
                 <h2 className="text-2xl font-bold">Daily Meal Plan</h2>
                 <Link 
-                  href="/diet"
+                  href="/today-diet"
                   className="text-green-600 hover:text-green-700 text-sm font-medium"
                 >
-                  View Full Plan →
+                  View Today Diet →
                 </Link>
               </div>
 
@@ -232,8 +232,8 @@ export default function PlansPage() {
                   <div className="text-5xl mb-4">🍽️</div>
                   <h3 className="text-xl font-bold text-gray-900 mb-2">No Diet Plan Yet</h3>
                   <p className="text-gray-600 mb-4">Contact your trainer to get a personalized nutrition plan.</p>
-                  <Link href="/diet" className="text-green-600 hover:text-green-700 font-medium">
-                    Go to Diet Plans →
+                  <Link href="/today-diet" className="text-green-600 hover:text-green-700 font-medium">
+                    Go to Today Diet →
                   </Link>
                 </div>
               </CardBody>

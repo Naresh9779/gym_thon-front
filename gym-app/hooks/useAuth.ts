@@ -22,8 +22,10 @@ type User = {
   };
   subscription?: {
     plan?: string;
-    status?: 'active' | 'inactive' | 'trial';
-    expiresAt?: string;
+    status?: 'active' | 'inactive' | 'trial' | 'expired';
+    startDate?: string;
+    endDate?: string;
+    durationMonths?: number;
   };
   createdAt?: string;
   updatedAt?: string;
@@ -63,6 +65,43 @@ export function useAuth() {
   const [initialized, setInitialized] = useState(false);
 
   const accessToken = useMemo(() => getStoredToken(), [typeof window !== "undefined" && localStorage.getItem("accessToken")]);
+
+  // Token expiry monitoring
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    
+    const checkTokenExpiry = () => {
+      const token = getStoredToken();
+      if (!token) return;
+      
+      try {
+        // Parse JWT to get expiry (exp claim)
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        const exp = payload.exp * 1000; // Convert to milliseconds
+        const now = Date.now();
+        const timeLeft = exp - now;
+        
+        // Auto-logout 1 minute before expiry
+        if (timeLeft < 60000 && timeLeft > 0) {
+          console.warn('[Auth] Token expiring soon, logging out...');
+          logout();
+        } else if (timeLeft <= 0) {
+          console.warn('[Auth] Token expired, logging out...');
+          logout();
+        }
+      } catch (e) {
+        // Invalid token format
+        console.error('[Auth] Invalid token format:', e);
+        logout();
+      }
+    };
+    
+    // Check immediately and every 30 seconds
+    checkTokenExpiry();
+    const interval = setInterval(checkTokenExpiry, 30000);
+    
+    return () => clearInterval(interval);
+  }, [accessToken]);
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true); setError(null);

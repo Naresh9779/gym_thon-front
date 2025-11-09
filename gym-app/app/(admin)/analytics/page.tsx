@@ -14,6 +14,7 @@ export default function AnalyticsPage() {
   const [overview, setOverview] = useState<any>(null);
   const [trends, setTrends] = useState<Array<{ date: string; workouts: number; meals: number; activeUsers: number }>>([]);
   const [userMetrics, setUserMetrics] = useState<any>(null);
+  const [userTrends, setUserTrends] = useState<Array<{ date: string; workouts: number; meals: number; active: number }>>([]);
   const { accessToken } = useAuth();
 
   useEffect(() => {
@@ -48,15 +49,37 @@ export default function AnalyticsPage() {
   // Load per-user analytics when selection changes
   useEffect(() => {
     async function loadUserMetrics() {
-      if (!user) { setUserMetrics(null); return; }
+      if (!user) { 
+        setUserMetrics(null); 
+        setUserTrends([]);
+        return; 
+      }
       try {
         setLoading(true);
         const token = accessToken();
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analytics/user/${user._id}`, {
+        const [resMetrics, resTrends] = await Promise.all([
+          fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analytics/user/${user._id}`, {
+            headers: { Authorization: `Bearer ${token}` }
+          }),
+          fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/progress/trends?days=30`, {
+            headers: { Authorization: `Bearer ${token}`, 'X-User-Id': user._id }
+          }).catch(() => null)
+        ]);
+        const jsonMetrics = await resMetrics.json();
+        if (jsonMetrics.ok) setUserMetrics(jsonMetrics.data);
+        
+        // For user trends, we need to call the user-specific progress endpoint
+        // Since progress/trends is user-scoped by auth token, we'll fetch it differently
+        const resUserTrends = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${user._id}/trends`, {
           headers: { Authorization: `Bearer ${token}` }
-        });
-        const json = await res.json();
-        if (json.ok) setUserMetrics(json.data);
+        }).catch(() => null);
+        
+        if (resUserTrends && resUserTrends.ok) {
+          const jsonTrends = await resUserTrends.json();
+          if (jsonTrends.ok) setUserTrends(jsonTrends.data.series || []);
+        } else {
+          setUserTrends([]);
+        }
       } catch (e) {
         console.error('Failed to load user analytics', e);
       } finally {
@@ -110,14 +133,40 @@ export default function AnalyticsPage() {
 
       {/* Per-user KPI cards or empty-state prompt */}
       {user ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
-          <AnalyticsCard title="Workouts" value={userMetrics?.workoutsCompleted ?? 0} subtitle="Last 30 days" Icon={SparklesIcon} accent="green" />
-          <AnalyticsCard title="Meals Logged" value={userMetrics?.totalMealsLogged ?? 0} subtitle="Last 30 days" Icon={ChartPieIcon} accent="amber" />
-          <AnalyticsCard title="Active Days" value={userMetrics?.activeDays ?? 0} subtitle="Last 30 days" Icon={CalendarDaysIcon} accent="green" />
-          <AnalyticsCard title="Streak" value={userMetrics?.currentStreak ?? 0} subtitle="Current" Icon={UserIcon} accent="rose" />
-        </div>
+        loading ? (
+          <div className="bg-white rounded-xl shadow p-8 text-center">
+            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+            <p className="text-sm text-gray-500 mt-2">Loading user analytics...</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+            <AnalyticsCard title="Workouts" value={userMetrics?.workoutsCompleted ?? 0} subtitle="Last 30 days" Icon={SparklesIcon} accent="green" />
+            <AnalyticsCard title="Meals Logged" value={userMetrics?.totalMealsLogged ?? 0} subtitle="Last 30 days" Icon={ChartPieIcon} accent="amber" />
+            <AnalyticsCard title="Active Days" value={userMetrics?.activeDays ?? 0} subtitle="Last 30 days" Icon={CalendarDaysIcon} accent="green" />
+            <AnalyticsCard title="Streak" value={userMetrics?.currentStreak ?? 0} subtitle="Current" Icon={UserIcon} accent="rose" />
+          </div>
+        )
       ) : (
         <div className="bg-white rounded-xl shadow p-4 text-sm text-gray-700">Select a user from the dropdown to view analytics.</div>
+      )}
+
+      {/* User-specific Trends */}
+      {user && userTrends.length > 0 && (
+        <div className="bg-white rounded-xl shadow p-4">
+          <h3 className="text-sm font-semibold text-gray-800 mb-3">User Progress (30 days) - {user.name}</h3>
+          <div style={{ width: '100%', height: 220 }}>
+            <ResponsiveContainer>
+              <LineChart data={userTrends}>
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Line type="monotone" dataKey="workouts" stroke="#3B82F6" name="Workouts" strokeWidth={2} dot={{ r: 3 }} />
+                <Line type="monotone" dataKey="meals" stroke="#A855F7" name="Meals" strokeWidth={2} dot={{ r: 3 }} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
       )}
 
       {/* Platform Trends */}

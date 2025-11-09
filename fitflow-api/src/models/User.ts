@@ -18,8 +18,10 @@ const UserSchema = new Schema({
   },
   subscription: {
     plan: String,
-    status: { type: String, enum: ['active','inactive','trial'], default: 'active' },
-    expiresAt: Date
+    status: { type: String, enum: ['active','inactive','trial','expired'], default: 'active' },
+    startDate: Date,
+    endDate: Date,
+    durationMonths: Number
   }
 }, { timestamps: true });
 

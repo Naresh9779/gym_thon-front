@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
+import { requireActiveSubscription } from '../middleware/subscription';
 import {
   getUserWorkoutPlans,
   getWorkoutPlanById,
@@ -10,6 +11,7 @@ import {
 const router = Router();
 
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 router.get('/', getUserWorkoutPlans);
 

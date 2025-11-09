@@ -18,7 +18,6 @@ export default function Navigation() {
 
   const userNav = [
     { name: 'Home', href: '/home', icon: HomeIcon },
-    { name: 'Diet', href: '/diet', icon: ClipboardIcon },
     { name: 'Workout', href: '/workout', icon: FireIcon },
     { name: 'Progress', href: '/progress', icon: ChartBarIcon },
     { name: 'Reports', href: '/reports', icon: ChartPieIcon },

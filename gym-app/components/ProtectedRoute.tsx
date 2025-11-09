@@ -1,17 +1,46 @@
 "use client";
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading } = useAuth();
 
   useEffect(() => {
     if (!loading && !user) {
       router.push("/auth");
+      return;
     }
-  }, [user, loading, router]);
+
+    // Check subscription for user-facing pages (not admin pages)
+    if (!loading && user && user.role !== 'admin') {
+      const subscriptionRestrictedPages = [
+        '/workout',
+        '/home',
+        '/today-workout',
+        '/today-diet',
+        '/today-meal',
+        '/plans',
+        '/progress'
+      ];
+
+      const isRestricted = subscriptionRestrictedPages.some(page => pathname?.startsWith(page));
+      
+      if (isRestricted && user.subscription) {
+        const now = new Date();
+        const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
+        
+        // Check if subscription is expired
+        if (!endDate || now > endDate || user.subscription.status === 'expired') {
+          // Redirect to profile page with expired message
+          router.push('/profile?subscription=expired');
+          return;
+        }
+      }
+    }
+  }, [user, loading, router, pathname]);
 
   if (loading) {
     return (

@@ -18,4 +18,7 @@ export const ENV = {
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
   APP_URL: process.env.APP_URL || 'http://localhost:3000',
   RAPIDAPI_KEY: process.env.RAPIDAPI_KEY,
+  ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'admin@fitflow.com',
+  ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'ChangeMe123!',
+  ADMIN_NAME: process.env.ADMIN_NAME || 'Administrator'
 };

@@ -8,7 +8,7 @@ interface UserContext {
   weight: number;
   height: number;
   gender?: 'male' | 'female' | 'other';
-  goals?: 'weight_loss' | 'muscle_gain' | 'maintenance' | 'endurance';
+  goals?: string[]; // Array of goals
   activityLevel?: 'sedentary' | 'light' | 'moderate' | 'active' | 'very_active';
   preferences?: string[];
   restrictions?: string[];
@@ -36,6 +36,9 @@ interface GeneratedWorkoutCycle {
 class WorkoutGenerationService {
   private buildWorkoutPrompt(user: UserContext, startDate: Date, durationWeeks: number): string {
     const startISO = startDate.toISOString().split('T')[0];
+    const primaryGoal = (user.goals && user.goals.length > 0) ? user.goals[0] : 'maintenance';
+    const allGoals = (user.goals && user.goals.length > 0) ? user.goals.join(', ') : 'maintenance';
+    
     return `Generate a progressive overload workout cycle.
 
 User Profile:
@@ -44,7 +47,8 @@ User Profile:
 - Height: ${user.height} cm
 - Gender: ${user.gender || 'other'}
 - Activity Level: ${user.activityLevel || 'moderate'}
-- Goal: ${user.goals || 'maintenance'}
+- Primary Goal: ${primaryGoal}
+- All Goals: ${allGoals}
 - Preferences: ${(user.preferences || []).join(', ') || 'None'}
 - Restrictions: ${(user.restrictions || []).join(', ') || 'None'}
 
@@ -54,6 +58,7 @@ Cycle Requirements:
 - 3-6 training days per week
 - Include warm-up guidance and rest intervals
 - Emphasize correct form and safety
+- Tailor exercises to user's goals, preferences, and restrictions
 
 Response format (JSON only):
 {
@@ -104,7 +109,7 @@ Response format (JSON only):
       weight: user.profile.weight,
       height: user.profile.height,
       gender: (user.profile.gender as any) || 'other',
-      goals: (user.profile.goals as any) || 'maintenance',
+      goals: Array.isArray(user.profile.goals) ? user.profile.goals : (user.profile.goals ? [user.profile.goals as string] : ['maintenance']),
       activityLevel: (user.profile.activityLevel as any) || 'moderate',
       preferences: user.profile.preferences || [],
       restrictions: user.profile.restrictions || [],

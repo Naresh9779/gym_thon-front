@@ -30,6 +30,9 @@ interface UserData {
   subscription?: {
     plan: string;
     status: string;
+    startDate?: string;
+    endDate?: string;
+    durationMonths?: number;
   };
 }
 
@@ -57,6 +60,9 @@ export default function AdminUserDetail({ params }: Props) {
   const [dietPlans, setDietPlans] = useState<DietPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [subscriptionAction, setSubscriptionAction] = useState<'extend' | 'expire' | 'setDate'>('extend');
+  const [subscriptionValue, setSubscriptionValue] = useState('1'); // months/days/date value
 
   // No inline edit state; we redirect to dedicated edit pages
 
@@ -135,6 +141,45 @@ export default function AdminUserDetail({ params }: Props) {
     }
   };
 
+  const handleSubscriptionUpdate = async () => {
+    try {
+      const token = accessToken();
+      const payload: any = {};
+      
+      if (subscriptionAction === 'extend') {
+        payload.extendByMonths = Number(subscriptionValue);
+      } else if (subscriptionAction === 'expire') {
+        payload.status = 'expired';
+      } else if (subscriptionAction === 'setDate') {
+        payload.setEndDate = subscriptionValue;
+      }
+      
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${id}/subscription`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      
+      const json = await res.json();
+      if (json.ok) {
+        alert('Subscription updated successfully!');
+        setShowSubscriptionModal(false);
+        // Refresh user data
+        if (json.data?.user) {
+          setUser(json.data.user);
+        }
+      } else {
+        alert(`Failed to update: ${json.error?.message || 'Unknown error'}`);
+      }
+    } catch (e) {
+      console.error('Failed to update subscription:', e);
+      alert('Failed to update subscription');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -178,16 +223,45 @@ export default function AdminUserDetail({ params }: Props) {
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Status:</span>
                   <span className={`text-sm font-medium capitalize ${
-                    user.subscription?.status === 'active' ? 'text-green-600' : 'text-gray-600'
+                    user.subscription?.status === 'active' ? 'text-green-600' : 
+                    user.subscription?.status === 'expired' ? 'text-red-600' : 'text-gray-600'
                   }`}>
                     {user.subscription?.status || 'Active'}
                   </span>
                 </div>
+                {user.subscription?.startDate && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Start:</span>
+                    <span className="text-sm font-medium">
+                      {new Date(user.subscription.startDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+                {user.subscription?.endDate && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">End:</span>
+                    <span className="text-sm font-medium">
+                      {new Date(user.subscription.endDate).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+                {user.subscription?.durationMonths && (
+                  <div className="flex justify-between">
+                    <span className="text-sm text-gray-600">Duration:</span>
+                    <span className="text-sm font-medium">{user.subscription.durationMonths} months</span>
+                  </div>
+                )}
                 <div className="flex justify-between">
                   <span className="text-sm text-gray-600">Role:</span>
                   <span className="text-sm font-medium capitalize">{user.role}</span>
                 </div>
               </div>
+              <button
+                onClick={() => setShowSubscriptionModal(true)}
+                className="w-full mt-4 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                Manage Subscription
+              </button>
             </CardBody>
           </Card>
         </div>
@@ -355,6 +429,118 @@ export default function AdminUserDetail({ params }: Props) {
           )}
         </CardBody>
       </Card>
+
+      {/* Subscription Management Modal */}
+      {showSubscriptionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold mb-4">Manage Subscription</h3>
+            
+            {/* Action Selection */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Action
+              </label>
+              <div className="space-y-2">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="subscriptionAction"
+                    value="extend"
+                    checked={subscriptionAction === 'extend'}
+                    onChange={(e) => setSubscriptionAction(e.target.value as 'extend' | 'expire' | 'setDate')}
+                    className="mr-2"
+                  />
+                  <span>Extend/Reduce Subscription</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="subscriptionAction"
+                    value="setDate"
+                    checked={subscriptionAction === 'setDate'}
+                    onChange={(e) => setSubscriptionAction(e.target.value as 'extend' | 'expire' | 'setDate')}
+                    className="mr-2"
+                  />
+                  <span>Set End Date</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="subscriptionAction"
+                    value="expire"
+                    checked={subscriptionAction === 'expire'}
+                    onChange={(e) => setSubscriptionAction(e.target.value as 'extend' | 'expire' | 'setDate')}
+                    className="mr-2"
+                  />
+                  <span>Mark as Expired</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Value Input */}
+            {subscriptionAction === 'extend' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Months to Extend/Reduce
+                </label>
+                <input
+                  type="number"
+                  value={subscriptionValue}
+                  onChange={(e) => setSubscriptionValue(e.target.value)}
+                  placeholder="Enter number (negative to reduce)"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Use positive numbers to extend, negative to reduce
+                </p>
+              </div>
+            )}
+
+            {subscriptionAction === 'setDate' && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  New End Date
+                </label>
+                <input
+                  type="date"
+                  value={subscriptionValue}
+                  onChange={(e) => setSubscriptionValue(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                />
+              </div>
+            )}
+
+            {subscriptionAction === 'expire' && (
+              <div className="mb-4">
+                <p className="text-sm text-gray-700">
+                  This will immediately mark the subscription as expired. The user will no longer be able to access their plans.
+                </p>
+              </div>
+            )}
+
+            {/* Buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  setShowSubscriptionModal(false);
+                  setSubscriptionAction('extend');
+                  setSubscriptionValue('');
+                }}
+                className="flex-1 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSubscriptionUpdate}
+                className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
+              >
+                Update Subscription
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

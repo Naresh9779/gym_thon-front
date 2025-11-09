@@ -1,12 +1,14 @@
 import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { requireActiveSubscription } from '../middleware/subscription';
 import ProgressLog from '../models/ProgressLog';
 import { z } from 'zod';
 
 const router = Router();
 
-// All progress routes require authentication
+// All progress routes require authentication and active subscription
 router.use(authenticate);
+router.use(requireActiveSubscription);
 
 // GET /api/progress - get user's progress logs
 router.get('/', async (req: AuthRequest, res) => {

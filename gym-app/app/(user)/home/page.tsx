@@ -84,91 +84,109 @@ export default function UserDashboard() {
         <StatCard label="Weight" value={user?.profile?.weight ? `${user.profile.weight} kg` : '-'} icon="⚖️" />
       </div>
 
-      {/* Today's Workout */}
-      <Card>
-        <CardHeader 
-          title="Today's Workout" 
-          subtitle={todayWorkout ? (todayWorkout.day || 'Today') : 'No workout today'} 
-        />
-        <CardBody>
-          {todayWorkout && !todayWorkout.isRestDay && todayWorkout.exercises?.length > 0 ? (
-            <>
-              <div className="space-y-3">
-                {todayWorkout.exercises.slice(0, 3).map((ex: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="font-medium">{ex.name}</span>
-                    <span className="text-sm text-gray-600">{ex.sets} × {ex.reps}</span>
+      {/* Today's Overview - Redirect Cards */}
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Today's Workout Card */}
+        <Link href="/today-workout">
+          <Card className="hover:shadow-xl transition-all cursor-pointer border-2 border-transparent hover:border-green-500">
+            <CardBody>
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 bg-gradient-to-br from-green-400 to-green-600 rounded-xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                    </svg>
                   </div>
-                ))}
-                {todayWorkout.exercises.length > 3 && (
-                  <div className="text-center text-sm text-gray-500">
-                    +{todayWorkout.exercises.length - 3} more exercises
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Today's Workout</h3>
+                    <p className="text-sm text-gray-600">
+                      {todayWorkout && !todayWorkout.isRestDay 
+                        ? todayWorkout.day || 'Ready to train' 
+                        : todayWorkout?.isRestDay 
+                        ? 'Rest & Recovery' 
+                        : 'No workout'}
+                    </p>
                   </div>
+                </div>
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </div>
+              <div className="flex items-center justify-between pt-3 border-t">
+                {todayWorkout && !todayWorkout.isRestDay ? (
+                  <>
+                    <span className="text-sm text-gray-600">
+                      {todayWorkout.exercises?.length || 0} exercises
+                    </span>
+                    <span className="text-xs font-medium text-green-600 flex items-center gap-1">
+                      View Details
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    </span>
+                  </>
+                ) : todayWorkout?.isRestDay ? (
+                  <>
+                    <span className="text-sm text-gray-600">😴 Recovery day</span>
+                    <span className="text-xs font-medium text-gray-500">Take it easy</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-gray-600">No plan available</span>
+                    <span className="text-xs font-medium text-gray-500">Check plans</span>
+                  </>
                 )}
               </div>
-              <Link href="/workout?start=true" className="block mt-4">
-                <button className="w-full px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium flex items-center justify-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  Start Today's Workout
-                </button>
-              </Link>
-            </>
-          ) : todayWorkout?.isRestDay ? (
-            <div className="text-center py-8">
-              <div className="text-5xl mb-3">😴</div>
-              <p className="text-lg font-semibold text-gray-900">Rest Day</p>
-              <p className="text-sm text-gray-600 mt-1">Recovery is key to progress!</p>
-            </div>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-500">No workout plan assigned yet.</p>
-              <Link href="/workout" className="text-green-600 hover:text-green-700 font-medium mt-2 inline-block">
-                View workout plans →
-              </Link>
-            </div>
-          )}
-        </CardBody>
-      </Card>
+            </CardBody>
+          </Card>
+        </Link>
 
-      {/* Today's Diet */}
-      <Card>
-        <CardHeader 
-          title="Today's Meals" 
-          subtitle={todayDiet ? `${todayDiet.dailyCalories || 0} kcal target` : 'No diet plan'} 
-        />
-        <CardBody>
-          {todayDiet && todayDiet.meals?.length > 0 ? (
-            <>
-              <div className="space-y-2">
-                {todayDiet.meals.map((meal: any, i: number) => (
-                  <div key={i} className="flex justify-between items-center py-2 border-b last:border-0">
-                    <div>
-                      <span className="text-sm font-medium">{meal.name}</span>
-                      <p className="text-xs text-gray-500">{meal.time}</p>
-                    </div>
-                    <span className="text-xs font-semibold text-green-600">{meal.calories} kcal</span>
+  {/* Today's Diet Card */}
+  <Link href="/today-diet">
+          <Card className="hover:shadow-xl transition-all cursor-pointer border-2 border-transparent hover:border-orange-500">
+            <CardBody>
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-14 h-14 bg-gradient-to-br from-orange-400 to-orange-600 rounded-xl flex items-center justify-center">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
                   </div>
-                ))}
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">Today's Diet</h3>
+                    <p className="text-sm text-gray-600">
+                      {todayDiet ? `${todayDiet.dailyCalories || 0} kcal target` : 'No diet plan'}
+                    </p>
+                  </div>
+                </div>
+                <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
               </div>
-              <Link href="/diet" className="block mt-4">
-                <button className="w-full px-4 py-2 border-2 border-green-500 text-green-600 rounded-lg hover:bg-green-50 transition-colors font-medium">
-                  View Full Diet Plan →
-                </button>
-              </Link>
-            </>
-          ) : (
-            <div className="text-center py-8">
-              <p className="text-gray-500">No diet plan assigned yet.</p>
-              <Link href="/diet" className="text-green-600 hover:text-green-700 font-medium mt-2 inline-block">
-                View diet plans →
-              </Link>
-            </div>
-          )}
-        </CardBody>
-      </Card>
+              <div className="flex items-center justify-between pt-3 border-t">
+                {todayDiet && todayDiet.meals?.length > 0 ? (
+                  <>
+                    <span className="text-sm text-gray-600">
+                      {todayDiet.meals.length} meals planned
+                    </span>
+                    <span className="text-xs font-medium text-orange-600 flex items-center gap-1">
+                      View Details
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                      </svg>
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-sm text-gray-600">No meals planned</span>
+                    <span className="text-xs font-medium text-gray-500">Check plans</span>
+                  </>
+                )}
+              </div>
+            </CardBody>
+          </Card>
+        </Link>
+      </div>
 
       {/* Quick Actions */}
       <div className="grid md:grid-cols-3 gap-4">

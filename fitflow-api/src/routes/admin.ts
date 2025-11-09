@@ -3,8 +3,10 @@ import { authenticate, requireAdmin } from '../middleware/auth';
 import User from '../models/User';
 import WorkoutPlan from '../models/WorkoutPlan';
 import DietPlan from '../models/DietPlan';
+import ProgressLog from '../models/ProgressLog';
 import { workoutGenerationService } from '../services/workoutGenerationService';
 import { dietGenerationService } from '../services/dietGenerationService';
+import { planSchedulerService } from '../services/planSchedulerService';
 import { hashPassword } from '../utils/auth';
 import { z } from 'zod';
 
@@ -65,6 +67,81 @@ router.patch('/users/:userId/profile', async (req, res) => {
   }
 });
 
+// PATCH /api/admin/users/:userId/subscription - update user subscription
+router.patch('/users/:userId/subscription', async (req, res) => {
+  try {
+    const { userId } = req.params as { userId: string };
+
+    const schema = z.object({
+      status: z.enum(['active', 'inactive', 'trial', 'expired']).optional(),
+      extendByMonths: z.number().min(-120).max(120).optional(), // Extend or reduce by months
+      extendByDays: z.number().min(-3650).max(3650).optional(), // Extend or reduce by days
+      setEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // Set specific end date
+    });
+
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: { message: 'Invalid subscription data', details: parsed.error.errors } });
+    }
+
+    const user = await User.findById(userId).select('subscription');
+    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+
+    const update: Record<string, any> = {};
+    
+    // Handle date modifications first
+    if (parsed.data.setEndDate) {
+      // Set specific end date
+      const newEndDate = new Date(parsed.data.setEndDate);
+      update['subscription.endDate'] = newEndDate;
+      
+      // Auto-activate if new end date is in the future
+      const now = new Date();
+      if (newEndDate > now && user.subscription?.status === 'expired') {
+        update['subscription.status'] = 'active';
+      }
+    } else if (parsed.data.extendByMonths !== undefined || parsed.data.extendByDays !== undefined) {
+      // Extend or reduce from current end date
+      const currentEnd = user.subscription?.endDate ? new Date(user.subscription.endDate) : new Date();
+      
+      if (parsed.data.extendByMonths) {
+        currentEnd.setMonth(currentEnd.getMonth() + parsed.data.extendByMonths);
+      }
+      
+      if (parsed.data.extendByDays) {
+        currentEnd.setDate(currentEnd.getDate() + parsed.data.extendByDays);
+      }
+      
+      update['subscription.endDate'] = currentEnd;
+      
+      // Auto-activate if new end date is in the future
+      const now = new Date();
+      if (currentEnd > now && user.subscription?.status === 'expired') {
+        update['subscription.status'] = 'active';
+      }
+      
+      // Recalculate duration if we have a start date
+      if (user.subscription?.startDate) {
+        const startDate = new Date(user.subscription.startDate);
+        const monthsDiff = (currentEnd.getFullYear() - startDate.getFullYear()) * 12 + 
+                          (currentEnd.getMonth() - startDate.getMonth());
+        update['subscription.durationMonths'] = Math.max(0, monthsDiff);
+      }
+    }
+    
+    // Update status if explicitly provided (overrides auto-activation)
+    if (parsed.data.status) {
+      update['subscription.status'] = parsed.data.status;
+    }
+
+    const updated = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).select('name email role subscription');
+    return res.json({ ok: true, data: { user: updated } });
+  } catch (err) {
+    console.error('[Admin] update subscription error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to update subscription' } });
+  }
+});
+
 // POST /api/admin/users - create a new user (role=user)
 router.post('/users', async (req, res) => {
   try {
@@ -72,13 +149,17 @@ router.post('/users', async (req, res) => {
       name: z.string().min(2),
       email: z.string().email(),
       password: z.string().min(6),
+      subscriptionDurationMonths: z.number().min(1).max(60).default(1), // Default 1 month
       profile: z
         .object({
           age: z.number().optional(),
           weight: z.number().optional(),
           height: z.number().optional(),
+          gender: z.enum(['male', 'female', 'other']).optional(),
           activityLevel: z.enum(['sedentary', 'light', 'moderate', 'active', 'very_active']).optional(),
           goals: z.array(z.enum(['weight_loss', 'muscle_gain', 'maintenance', 'endurance'])).optional(),
+          preferences: z.array(z.string()).optional(),
+          restrictions: z.array(z.string()).optional(),
         })
         .optional(),
     });
@@ -86,22 +167,34 @@ router.post('/users', async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ ok: false, error: { message: 'Invalid user data', details: parsed.error.errors } });
     }
-    const { name, email, password, profile } = parsed.data;
+    const { name, email, password, subscriptionDurationMonths, profile } = parsed.data;
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ ok: false, error: { message: 'Email already registered' } });
 
     const passwordHash = await hashPassword(password);
+    
+    // Calculate subscription dates
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + subscriptionDurationMonths);
+    
     const user = await User.create({
       name,
       email,
       passwordHash,
       role: 'user',
       profile: profile ? { ...profile } : undefined,
-      subscription: { plan: 'free', status: 'active' },
+      subscription: { 
+        plan: 'free', 
+        status: 'active',
+        startDate,
+        endDate,
+        durationMonths: subscriptionDurationMonths
+      },
     });
 
-    return res.status(201).json({ ok: true, data: { user: { id: user._id, name: user.name, email: user.email, role: user.role } } });
+    return res.status(201).json({ ok: true, data: { user: { id: user._id, name: user.name, email: user.email, role: user.role, subscription: user.subscription } } });
   } catch (err) {
     console.error('[Admin] Create user error', err);
     res.status(500).json({ ok: false, error: { message: 'Failed to create user' } });
@@ -138,9 +231,25 @@ router.post('/users/:userId/generate-workout-cycle', async (req, res) => {
     const { userId } = req.params as { userId: string };
     const { startDate, durationWeeks } = parsed.data;
 
-    // Validate user exists
-    const user = await User.findById(userId).select('_id');
+    // Validate user exists and check subscription
+    const user = await User.findById(userId).select('_id subscription');
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+
+    // Check if user's subscription is active
+    if (user.subscription) {
+      const now = new Date();
+      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
+      
+      if (!endDate || now > endDate || user.subscription.status === 'expired') {
+        return res.status(403).json({ 
+          ok: false, 
+          error: { 
+            message: 'Cannot generate workout plan for user with expired subscription',
+            code: 'USER_SUBSCRIPTION_EXPIRED'
+          } 
+        });
+      }
+    }
 
     // Check overlap
     const start = new Date(startDate);
@@ -183,9 +292,25 @@ router.post('/users/:userId/generate-diet', async (req, res) => {
     const { date, previousDayProgressId } = parsed.data;
     const targetDate = new Date(date);
 
-    // Validate user exists
-    const user = await User.findById(userId).select('_id');
+    // Validate user exists and check subscription
+    const user = await User.findById(userId).select('_id subscription');
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+
+    // Check if user's subscription is active
+    if (user.subscription) {
+      const now = new Date();
+      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
+      
+      if (!endDate || now > endDate || user.subscription.status === 'expired') {
+        return res.status(403).json({ 
+          ok: false, 
+          error: { 
+            message: 'Cannot generate diet plan for user with expired subscription',
+            code: 'USER_SUBSCRIPTION_EXPIRED'
+          } 
+        });
+      }
+    }
 
     // Check if plan exists
     const existingPlan = await DietPlan.findOne({ userId, date: targetDate });
@@ -218,8 +343,25 @@ router.post('/users/:userId/generate-diet-daily', async (req, res) => {
     const { userId } = req.params as { userId: string };
     const { previousDayProgressId } = parsed.data;
 
-    const user = await User.findById(userId).select('_id');
+    // Validate user exists and check subscription
+    const user = await User.findById(userId).select('_id subscription');
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+
+    // Check if user's subscription is active
+    if (user.subscription) {
+      const now = new Date();
+      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
+      
+      if (!endDate || now > endDate || user.subscription.status === 'expired') {
+        return res.status(403).json({ 
+          ok: false, 
+          error: { 
+            message: 'Cannot generate diet plan for user with expired subscription',
+            code: 'USER_SUBSCRIPTION_EXPIRED'
+          } 
+        });
+      }
+    }
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -415,6 +557,76 @@ router.delete('/diet/:planId', async (req, res) => {
   } catch (err) {
     console.error('[Admin] delete diet plan error', err);
     return res.status(500).json({ ok: false, error: { message: 'Failed to delete diet plan' } });
+  }
+});
+
+// GET /api/admin/users/:userId/trends?days=30 - get user progress trends (admin)
+router.get('/users/:userId/trends', async (req, res) => {
+  try {
+    const { userId } = req.params as { userId: string };
+    const days = parseInt(String(req.query.days || '30')) || 30;
+    const since = new Date();
+    since.setDate(since.getDate() - days + 1);
+    since.setHours(0, 0, 0, 0);
+
+    const logs = await ProgressLog.find({ userId, date: { $gte: since } }).lean();
+
+    const series: { date: string; workouts: number; meals: number; active: number }[] = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(since);
+      d.setDate(since.getDate() + i);
+      const dateKey = d.toISOString().slice(0, 10);
+      const dayLog = logs.find(l => {
+        const ld = new Date(l.date);
+        ld.setHours(0, 0, 0, 0);
+        return ld.toISOString().slice(0, 10) === dateKey;
+      });
+      const workouts = dayLog && dayLog.workout && (dayLog.workout.completedExercises || 0) > 0 ? 1 : 0;
+      const meals = dayLog?.meals?.length || 0;
+      const active = workouts > 0 || meals > 0 ? 1 : 0;
+      series.push({ date: dateKey, workouts, meals, active });
+    }
+
+    return res.json({ ok: true, data: { series } });
+  } catch (err) {
+    console.error('[Admin] user trends error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to fetch user trends' } });
+  }
+});
+
+// POST /api/admin/scheduler/trigger-daily-diet - manually trigger daily diet generation
+router.post('/scheduler/trigger-daily-diet', async (_req, res) => {
+  try {
+    console.log('[Admin] Manual trigger: Daily diet generation');
+    // Run in background (don't wait for completion)
+    planSchedulerService.triggerDailyDietGeneration().catch(err => {
+      console.error('[Admin] Daily diet generation error:', err);
+    });
+    return res.json({ 
+      ok: true, 
+      data: { message: 'Daily diet generation triggered. Check server logs for progress.' } 
+    });
+  } catch (err) {
+    console.error('[Admin] trigger daily diet error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to trigger daily diet generation' } });
+  }
+});
+
+// POST /api/admin/scheduler/trigger-workout-expiry - manually trigger workout expiry check
+router.post('/scheduler/trigger-workout-expiry', async (_req, res) => {
+  try {
+    console.log('[Admin] Manual trigger: Workout expiry check');
+    // Run in background (don't wait for completion)
+    planSchedulerService.triggerWorkoutExpiryCheck().catch(err => {
+      console.error('[Admin] Workout expiry check error:', err);
+    });
+    return res.json({ 
+      ok: true, 
+      data: { message: 'Workout expiry check triggered. Check server logs for progress.' } 
+    });
+  } catch (err) {
+    console.error('[Admin] trigger workout expiry error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to trigger workout expiry check' } });
   }
 });
 
