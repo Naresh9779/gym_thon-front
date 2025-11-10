@@ -73,7 +73,14 @@ export default function AdminGenerateWorkout() {
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${selectedUserId}/generate-workout-cycle`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ startDate, durationWeeks: 4 }),
+        body: JSON.stringify({ 
+          startDate, 
+          durationWeeks: 4,
+          daysPerWeek: parseInt(formData.daysPerWeek),
+          goal: formData.goal,
+          experience: formData.experience,
+          preferences: formData.preferences || undefined
+        }),
       });
       const json = await res.json();
       if (!res.ok || !json.ok) {

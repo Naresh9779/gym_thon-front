@@ -224,6 +224,10 @@ router.post('/users/:userId/generate-workout-cycle', planGenerationLimiter, aiOp
     const schema = z.object({
       startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       durationWeeks: z.number().min(1).max(16).default(4),
+      daysPerWeek: z.number().min(3).max(6).optional(),
+      goal: z.string().optional(),
+      experience: z.enum(['beginner', 'intermediate', 'advanced']).optional(),
+      preferences: z.string().optional(),
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
@@ -231,7 +235,7 @@ router.post('/users/:userId/generate-workout-cycle', planGenerationLimiter, aiOp
     }
 
     const { userId } = req.params as { userId: string };
-    const { startDate, durationWeeks } = parsed.data;
+    const { startDate, durationWeeks, daysPerWeek, goal, experience, preferences } = parsed.data;
 
     // Validate user exists and check subscription
     const user = await User.findById(userId).select('_id subscription');
@@ -267,7 +271,15 @@ router.post('/users/:userId/generate-workout-cycle', planGenerationLimiter, aiOp
       return res.status(409).json({ ok: false, error: { message: 'Workout plan overlaps existing cycle', existingPlanId: overlap._id } });
     }
 
-    const plan = await workoutGenerationService.generateWorkoutCycle(userId, start, durationWeeks);
+    const plan = await workoutGenerationService.generateWorkoutCycle(
+      userId, 
+      start, 
+      durationWeeks,
+      daysPerWeek,
+      goal,
+      experience,
+      preferences
+    );
     return res.status(201).json({ ok: true, data: { workoutPlan: plan, message: 'Workout cycle generated successfully' } });
   } catch (err: any) {
     console.error('[Admin] generate-workout-cycle error', err);
