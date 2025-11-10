@@ -26,7 +26,7 @@ const limiter = rateLimit({
     });
   }
 });
-// app.use(limiter);
+app.use(limiter); // Enable global rate limiting for production
 
 app.get('/', (_req, res) => res.json({ ok: true, data: { name: 'FitFlow API' } }));
 app.use('/api', api);
