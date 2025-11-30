@@ -2,9 +2,36 @@ import mongoose from 'mongoose';
 import { ENV } from './env';
 import DietPlan from '../models/DietPlan';
 
+// Cache connection for serverless environments
+let isConnected = false;
+
 export async function connectDB() {
+  // If already connected, skip reconnection (important for serverless)
+  if (isConnected && mongoose.connection.readyState === 1) {
+    console.log('✅ MongoDB already connected (cached)');
+    return;
+  }
+
   mongoose.set('strictQuery', true);
-  await mongoose.connect(ENV.MONGODB_URI);
+  
+  // Connection options optimized for serverless (Vercel, etc.)
+  const options: mongoose.ConnectOptions = {
+    // Buffer commands until connection is established
+    bufferCommands: true,
+    // Maximum time to wait for server selection (30 seconds)
+    serverSelectionTimeoutMS: 30000,
+    // Maximum time for socket operations (45 seconds)
+    socketTimeoutMS: 45000,
+    // Connection pool settings optimized for serverless
+    maxPoolSize: 10,
+    minPoolSize: 1,
+    // Keep trying to reconnect
+    retryWrites: true,
+    retryReads: true,
+  };
+
+  await mongoose.connect(ENV.MONGODB_URI, options);
+  isConnected = true;
   console.log('✅ MongoDB connected');
 
   // Clean up legacy index and ensure current indexes for DietPlan
