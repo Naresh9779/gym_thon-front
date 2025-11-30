@@ -2,44 +2,54 @@ import mongoose from 'mongoose';
 import { ENV } from './env';
 import DietPlan from '../models/DietPlan';
 
-// Cache connection for serverless environments
-let isConnected = false;
+// Cache connection promise for serverless environments to prevent multiple connections
+let connectionPromise: Promise<typeof mongoose> | null = null;
 
 // Set up connection event listeners to manage connection state
 function setupConnectionListeners() {
   mongoose.connection.on('disconnected', () => {
-    isConnected = false;
+    connectionPromise = null;
     console.log('⚠️ MongoDB disconnected');
   });
 
   mongoose.connection.on('error', (err) => {
-    isConnected = false;
+    connectionPromise = null;
     console.error('❌ MongoDB connection error:', err.message);
   });
 
   mongoose.connection.on('reconnected', () => {
-    isConnected = true;
     console.log('✅ MongoDB reconnected');
   });
 }
 
-// Initialize listeners once
-let listenersInitialized = false;
+// Initialize listeners and global settings once
+let initialized = false;
+
+function initializeMongoose() {
+  if (initialized) return;
+  
+  mongoose.set('strictQuery', true);
+  // Increase buffer timeout for serverless cold starts (default is 10000ms)
+  mongoose.set('bufferTimeoutMS', 30000);
+  
+  setupConnectionListeners();
+  initialized = true;
+}
 
 export async function connectDB() {
-  // Set up event listeners on first call
-  if (!listenersInitialized) {
-    setupConnectionListeners();
-    listenersInitialized = true;
-  }
+  // Initialize mongoose settings on first call
+  initializeMongoose();
 
   // If already connected, skip reconnection (important for serverless)
-  if (isConnected && mongoose.connection.readyState === 1) {
-    console.log('✅ MongoDB already connected (cached)');
+  if (mongoose.connection.readyState === 1) {
     return;
   }
 
-  mongoose.set('strictQuery', true);
+  // If connection is in progress, wait for it (prevents race conditions in serverless)
+  if (connectionPromise) {
+    await connectionPromise;
+    return;
+  }
   
   // Connection options optimized for serverless (Vercel, etc.)
   const options: mongoose.ConnectOptions = {
@@ -58,11 +68,11 @@ export async function connectDB() {
   };
 
   try {
-    await mongoose.connect(ENV.MONGODB_URI, options);
-    isConnected = true;
+    connectionPromise = mongoose.connect(ENV.MONGODB_URI, options);
+    await connectionPromise;
     console.log('✅ MongoDB connected');
   } catch (err) {
-    isConnected = false;
+    connectionPromise = null;
     throw err;
   }
 
