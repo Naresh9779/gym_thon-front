@@ -5,7 +5,34 @@ import DietPlan from '../models/DietPlan';
 // Cache connection for serverless environments
 let isConnected = false;
 
+// Set up connection event listeners to manage connection state
+function setupConnectionListeners() {
+  mongoose.connection.on('disconnected', () => {
+    isConnected = false;
+    console.log('⚠️ MongoDB disconnected');
+  });
+
+  mongoose.connection.on('error', (err) => {
+    isConnected = false;
+    console.error('❌ MongoDB connection error:', err.message);
+  });
+
+  mongoose.connection.on('reconnected', () => {
+    isConnected = true;
+    console.log('✅ MongoDB reconnected');
+  });
+}
+
+// Initialize listeners once
+let listenersInitialized = false;
+
 export async function connectDB() {
+  // Set up event listeners on first call
+  if (!listenersInitialized) {
+    setupConnectionListeners();
+    listenersInitialized = true;
+  }
+
   // If already connected, skip reconnection (important for serverless)
   if (isConnected && mongoose.connection.readyState === 1) {
     console.log('✅ MongoDB already connected (cached)');
@@ -30,9 +57,14 @@ export async function connectDB() {
     retryReads: true,
   };
 
-  await mongoose.connect(ENV.MONGODB_URI, options);
-  isConnected = true;
-  console.log('✅ MongoDB connected');
+  try {
+    await mongoose.connect(ENV.MONGODB_URI, options);
+    isConnected = true;
+    console.log('✅ MongoDB connected');
+  } catch (err) {
+    isConnected = false;
+    throw err;
+  }
 
   // Clean up legacy index and ensure current indexes for DietPlan
   try {
