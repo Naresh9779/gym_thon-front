@@ -11,7 +11,8 @@ const app = express();
 app.use(helmet());
 app.use(cors({ origin: ENV.CORS_ORIGIN, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
-app.set('trust proxy', true); 
+app.set('trust proxy', 1); // ✔️ secure and correct
+
 
 
 const limiter = rateLimit({ 
