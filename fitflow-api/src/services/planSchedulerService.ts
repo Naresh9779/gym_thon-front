@@ -14,12 +14,29 @@ class PlanSchedulerService {
   private dailyDietCronJob: cron.ScheduledTask | null = null;
   private workoutExpiryCronJob: cron.ScheduledTask | null = null;
   private subscriptionStatusCronJob: cron.ScheduledTask | null = null;
+  
+  // Track last execution times
+  private lastExecutionTimes = {
+    subscriptionUpdate: null as Date | null,
+    dailyDiet: null as Date | null,
+    workoutExpiry: null as Date | null,
+  };
+
+  // Track execution counts
+  private executionCounts = {
+    subscriptionUpdate: 0,
+    dailyDiet: 0,
+    workoutExpiry: 0,
+  };
 
   /**
    * Auto-expire subscriptions based on endDate
    * Runs every day at 1 AM (server time)
    */
   private async updateExpiredSubscriptions() {
+    this.lastExecutionTimes.subscriptionUpdate = new Date();
+    this.executionCounts.subscriptionUpdate++;
+    
     try {
       console.log('[PlanScheduler] Checking for expired subscriptions...');
 
@@ -48,6 +65,9 @@ class PlanSchedulerService {
    * Runs every day at 2 AM (server time)
    */
   private async generateDailyDietPlans() {
+    this.lastExecutionTimes.dailyDiet = new Date();
+    this.executionCounts.dailyDiet++;
+    
     try {
       console.log('[PlanScheduler] Starting daily diet generation...');
       
@@ -135,6 +155,9 @@ class PlanSchedulerService {
    * Runs every day at 3 AM (server time)
    */
   private async checkWorkoutPlanExpiry() {
+    this.lastExecutionTimes.workoutExpiry = new Date();
+    this.executionCounts.workoutExpiry++;
+    
     try {
       console.log('[PlanScheduler] Checking for expired workout plans...');
 
@@ -277,6 +300,51 @@ class PlanSchedulerService {
   async triggerWorkoutExpiryCheck() {
     console.log('[PlanScheduler] Manual trigger: Workout expiry check');
     await this.checkWorkoutPlanExpiry();
+  }
+
+  /**
+   * Manual trigger for subscription update (for Vercel Cron / external triggers)
+   */
+  async triggerSubscriptionUpdate() {
+    console.log('[PlanScheduler] Manual trigger: Subscription update');
+    await this.updateExpiredSubscriptions();
+  }
+
+  /**
+   * Get status information about scheduled jobs
+   */
+  getStatus() {
+    const now = new Date();
+    const serverTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    
+    return {
+      isRunning: !!(this.dailyDietCronJob || this.workoutExpiryCronJob || this.subscriptionStatusCronJob),
+      serverTime: now.toISOString(),
+      serverTimezone,
+      schedules: {
+        subscriptionUpdate: {
+          cron: '0 1 * * *',
+          description: 'Daily at 1:00 AM',
+          isActive: !!this.subscriptionStatusCronJob,
+          lastExecution: this.lastExecutionTimes.subscriptionUpdate?.toISOString() || null,
+          executionCount: this.executionCounts.subscriptionUpdate,
+        },
+        dailyDiet: {
+          cron: '0 2 * * *',
+          description: 'Daily at 2:00 AM',
+          isActive: !!this.dailyDietCronJob,
+          lastExecution: this.lastExecutionTimes.dailyDiet?.toISOString() || null,
+          executionCount: this.executionCounts.dailyDiet,
+        },
+        workoutExpiry: {
+          cron: '0 3 * * *',
+          description: 'Daily at 3:00 AM',
+          isActive: !!this.workoutExpiryCronJob,
+          lastExecution: this.lastExecutionTimes.workoutExpiry?.toISOString() || null,
+          executionCount: this.executionCounts.workoutExpiry,
+        },
+      },
+    };
   }
 }
 

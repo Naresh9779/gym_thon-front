@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/subscription-update",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/cron/daily-diet",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/workout-expiry",
+      "schedule": "0 3 * * *"
+    }
+  ]
+}

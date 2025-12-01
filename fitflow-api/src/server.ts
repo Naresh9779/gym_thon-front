@@ -29,11 +29,16 @@ async function start() {
     await ensureAdmin();
     
     // Start automatic plan generation scheduler
-    planSchedulerService.start();
+    // Note: On Vercel (serverless), use vercel.json cron jobs instead
+    if (process.env.SERVERLESS !== 'true') {
+      planSchedulerService.start();
+      console.log(`✓ Node-cron scheduler: ENABLED`);
+    } else {
+      console.log(`✓ Serverless mode: Using Vercel Cron Jobs (see vercel.json)`);
+    }
     
     app.listen(ENV.PORT, () => {
       console.log(`🚀 FitFlow API listening on http://localhost:${ENV.PORT}`);
-      console.log(`✓ Automatic plan generation: ENABLED`);
     });
   } catch (err) {
     console.error('Failed to start server', err);

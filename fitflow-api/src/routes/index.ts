@@ -7,6 +7,7 @@ import progress from './progress';
 import reports from './reports';
 import admin from './admin';
 import analytics from './analytics';
+import cron from './cron';
 
 const router = Router();
 
@@ -19,5 +20,6 @@ router.use('/progress', progress);
 router.use('/reports', reports);
 router.use('/admin', admin);
 router.use('/analytics', analytics);
+router.use('/cron', cron);
 
 export default router;

@@ -645,4 +645,18 @@ router.post('/scheduler/trigger-workout-expiry', async (_req, res) => {
   }
 });
 
+// GET /api/admin/scheduler/status - get cronjob status and execution info
+router.get('/scheduler/status', async (_req, res) => {
+  try {
+    const status = planSchedulerService.getStatus();
+    return res.json({ 
+      ok: true, 
+      data: status
+    });
+  } catch (err) {
+    console.error('[Admin] scheduler status error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to get scheduler status' } });
+  }
+});
+
 export default router;
