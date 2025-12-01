@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { planSchedulerService } from '../services/planSchedulerService';
+import { connectDB } from '../config/db';
 
 const router = Router();
 
@@ -44,6 +45,7 @@ function verifyCronRequest(req: any, res: any, next: any) {
  */
 router.post('/subscription-update', verifyCronRequest, async (req, res) => {
   try {
+    await connectDB();
     console.log('[Cron] Subscription update triggered');
     await planSchedulerService.triggerSubscriptionUpdate();
     
@@ -67,6 +69,7 @@ router.post('/subscription-update', verifyCronRequest, async (req, res) => {
  */
 router.post('/daily-diet', verifyCronRequest, async (req, res) => {
   try {
+    await connectDB();
     console.log('[Cron] Daily diet generation triggered');
     await planSchedulerService.triggerDailyDietGeneration();
     
@@ -90,6 +93,7 @@ router.post('/daily-diet', verifyCronRequest, async (req, res) => {
  */
 router.post('/workout-expiry', verifyCronRequest, async (req, res) => {
   try {
+    await connectDB();
     console.log('[Cron] Workout expiry check triggered');
     await planSchedulerService.triggerWorkoutExpiryCheck();
     
@@ -114,6 +118,7 @@ router.post('/workout-expiry', verifyCronRequest, async (req, res) => {
  */
 router.post('/run-all', verifyCronRequest, async (req, res) => {
   try {
+    await connectDB();
     console.log('[Cron] Running all scheduled tasks...');
     
     const results = {

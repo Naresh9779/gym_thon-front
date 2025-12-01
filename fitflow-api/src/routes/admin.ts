@@ -8,6 +8,7 @@ import ProgressLog from '../models/ProgressLog';
 import { workoutGenerationService } from '../services/workoutGenerationService';
 import { dietGenerationService } from '../services/dietGenerationService';
 import { planSchedulerService } from '../services/planSchedulerService';
+import { connectDB } from '../config/db';
 import { hashPassword } from '../utils/auth';
 import { z } from 'zod';
 
@@ -612,6 +613,7 @@ router.get('/users/:userId/trends', async (req, res) => {
 // POST /api/admin/scheduler/trigger-daily-diet - manually trigger daily diet generation
 router.post('/scheduler/trigger-daily-diet', async (_req, res) => {
   try {
+    await connectDB();
     console.log('[Admin] Manual trigger: Daily diet generation');
     // Run in background (don't wait for completion)
     planSchedulerService.triggerDailyDietGeneration().catch(err => {
@@ -630,6 +632,7 @@ router.post('/scheduler/trigger-daily-diet', async (_req, res) => {
 // POST /api/admin/scheduler/trigger-workout-expiry - manually trigger workout expiry check
 router.post('/scheduler/trigger-workout-expiry', async (_req, res) => {
   try {
+    await connectDB();
     console.log('[Admin] Manual trigger: Workout expiry check');
     // Run in background (don't wait for completion)
     planSchedulerService.triggerWorkoutExpiryCheck().catch(err => {
