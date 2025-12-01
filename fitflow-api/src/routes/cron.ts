@@ -108,6 +108,71 @@ router.post('/workout-expiry', verifyCronRequest, async (req, res) => {
 });
 
 /**
+ * POST /api/cron/run-all
+ * Runs all scheduled tasks in sequence (for Vercel free plan with 1 cron job limit)
+ * Runs daily at 2 AM UTC
+ */
+router.post('/run-all', verifyCronRequest, async (req, res) => {
+  try {
+    console.log('[Cron] Running all scheduled tasks...');
+    
+    const results = {
+      subscriptionUpdate: { ok: false, message: '' },
+      dailyDiet: { ok: false, message: '' },
+      workoutExpiry: { ok: false, message: '' }
+    };
+
+    // Task 1: Update expired subscriptions
+    try {
+      console.log('[Cron] 1/3 - Subscription update starting...');
+      await planSchedulerService.triggerSubscriptionUpdate();
+      results.subscriptionUpdate = { ok: true, message: 'Completed' };
+      console.log('[Cron] 1/3 - Subscription update completed ✓');
+    } catch (error: any) {
+      console.error('[Cron] Subscription update failed:', error);
+      results.subscriptionUpdate = { ok: false, message: error.message };
+    }
+
+    // Task 2: Generate daily diet plans
+    try {
+      console.log('[Cron] 2/3 - Daily diet generation starting...');
+      await planSchedulerService.triggerDailyDietGeneration();
+      results.dailyDiet = { ok: true, message: 'Completed' };
+      console.log('[Cron] 2/3 - Daily diet generation completed ✓');
+    } catch (error: any) {
+      console.error('[Cron] Daily diet generation failed:', error);
+      results.dailyDiet = { ok: false, message: error.message };
+    }
+
+    // Task 3: Check workout expiry
+    try {
+      console.log('[Cron] 3/3 - Workout expiry check starting...');
+      await planSchedulerService.triggerWorkoutExpiryCheck();
+      results.workoutExpiry = { ok: true, message: 'Completed' };
+      console.log('[Cron] 3/3 - Workout expiry check completed ✓');
+    } catch (error: any) {
+      console.error('[Cron] Workout expiry check failed:', error);
+      results.workoutExpiry = { ok: false, message: error.message };
+    }
+
+    console.log('[Cron] All scheduled tasks completed');
+
+    res.json({ 
+      ok: true, 
+      message: 'All scheduled tasks completed',
+      timestamp: new Date().toISOString(),
+      results
+    });
+  } catch (error: any) {
+    console.error('[Cron] Run-all failed:', error);
+    res.status(500).json({ 
+      ok: false, 
+      error: error.message 
+    });
+  }
+});
+
+/**
  * GET /api/cron/health
  * Health check for cron endpoints
  */
@@ -116,6 +181,7 @@ router.get('/health', (req, res) => {
     ok: true,
     message: 'Cron endpoints are healthy',
     endpoints: [
+      'POST /api/cron/run-all (combined - all tasks)',
       'POST /api/cron/subscription-update',
       'POST /api/cron/daily-diet',
       'POST /api/cron/workout-expiry'
