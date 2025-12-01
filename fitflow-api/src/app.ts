@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { ENV } from './config/env';
 import api from './routes';
 import { errorHandler, notFound } from './middleware/errors';
+import { ensureDbConnection } from './middleware/dbConnection';
 
 const app = express();
 
@@ -32,7 +33,8 @@ const limiter = rateLimit({
 app.use(limiter); // Enable global rate limiting for production
 
 app.get('/', (_req, res) => res.json({ ok: true, data: { name: 'FitFlow API' } }));
-app.use('/api', api);
+// Ensure database connection for API routes (critical for serverless environments)
+app.use('/api', ensureDbConnection, api);
 
 app.use(notFound);
 app.use(errorHandler);
