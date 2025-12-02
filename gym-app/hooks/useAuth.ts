@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
 console.log("useAuth BASE_URL:", BASE_URL);
@@ -46,10 +46,27 @@ function getStoredToken() {
   return localStorage.getItem("accessToken");
 }
 
+function getStoredRefreshToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("refreshToken");
+}
+
 function setStoredTokens(accessToken?: string, refreshToken?: string) {
   if (typeof window === "undefined") return;
   if (accessToken) localStorage.setItem("accessToken", accessToken);
   if (refreshToken) localStorage.setItem("refreshToken", refreshToken);
+}
+
+function setStoredUser(user: User) {
+  if (typeof window === 'undefined') return;
+  try { localStorage.setItem('authUser', JSON.stringify(user)); } catch {}
+}
+
+function getStoredUser(): User | null {
+  if (typeof window === 'undefined') return null;
+  const raw = localStorage.getItem('authUser');
+  if (!raw) return null;
+  try { return JSON.parse(raw) as User; } catch { return null; }
 }
 
 function clearStoredTokens() {
@@ -64,44 +81,66 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
-  const accessToken = useMemo(() => getStoredToken(), [typeof window !== "undefined" && localStorage.getItem("accessToken")]);
+  // Track if a refresh is currently in progress to avoid duplicate calls from the interval
+  const refreshingRef = useRef(false);
+
+  // We will always read the latest token from storage when needed instead of storing in state.
+  // This avoids stale values on tab focus/other updates.
 
   // Token expiry monitoring
   useEffect(() => {
     if (typeof window === "undefined") return;
-    
-    const checkTokenExpiry = () => {
-      const token = getStoredToken();
-      if (!token) return;
-      
+
+    const attemptRefresh = async () => {
+      if (refreshingRef.current) return; // already refreshing
+      const rt = getStoredRefreshToken();
+      if (!rt) return; // cannot refresh without refresh token
+      refreshingRef.current = true;
       try {
-        // Parse JWT to get expiry (exp claim)
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const exp = payload.exp * 1000; // Convert to milliseconds
-        const now = Date.now();
-        const timeLeft = exp - now;
-        
-        // Auto-logout 1 minute before expiry
-        if (timeLeft < 60000 && timeLeft > 0) {
-          console.warn('[Auth] Token expiring soon, logging out...');
-          logout();
-        } else if (timeLeft <= 0) {
-          console.warn('[Auth] Token expired, logging out...');
-          logout();
+        const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refreshToken: rt })
+        });
+        const json = await res.json();
+        if (json.ok && json.data?.accessToken) {
+          setStoredTokens(json.data.accessToken); // keep existing refresh token
+          // Refresh user data after successful token renewal
+          await fetchMe();
+          return;
         }
-      } catch (e) {
-        // Invalid token format
-        console.error('[Auth] Invalid token format:', e);
+        // Failed refresh -> logout
         logout();
+      } catch {
+        logout();
+      } finally {
+        refreshingRef.current = false;
       }
     };
-    
-    // Check immediately and every 30 seconds
-    checkTokenExpiry();
-    const interval = setInterval(checkTokenExpiry, 30000);
-    
+
+    const checkToken = () => {
+      const token = getStoredToken();
+      if (!token) return; // not logged in
+      try {
+        const parts = token.split('.');
+        if (parts.length !== 3) throw new Error('Malformed JWT');
+        const payload = JSON.parse(atob(parts[1]));
+        const expMs = payload.exp * 1000;
+        const timeLeft = expMs - Date.now();
+        // If expired or less than 2 minutes left, try refreshing instead of logging out.
+        if (timeLeft <= 0 || timeLeft < 120000) {
+          attemptRefresh();
+        }
+      } catch (e) {
+        console.warn('[Auth] Token decode error, attempting refresh:', (e as Error).message);
+        attemptRefresh();
+      }
+    };
+
+    checkToken();
+    const interval = setInterval(checkToken, 30000);
     return () => clearInterval(interval);
-  }, [accessToken]);
+  }, [fetchMe, logout]);
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true); setError(null);
@@ -119,6 +158,7 @@ export function useAuth() {
         throw new Error(json.error?.message || "Login failed");
       }
       setStoredTokens(json.data.accessToken, json.data.refreshToken);
+      setStoredUser(json.data.user);
       setUser(json.data.user);
       setLoading(false);
       return json.data;
@@ -143,6 +183,7 @@ export function useAuth() {
         throw new Error(json.error?.message || "Register failed");
       }
       setStoredTokens(json.data.accessToken, json.data.refreshToken);
+      setStoredUser(json.data.user);
       setUser(json.data.user);
       setLoading(false);
       return json.data;
@@ -165,6 +206,7 @@ export function useAuth() {
       }
     } finally {
       clearStoredTokens();
+      try { localStorage.removeItem('authUser'); } catch {}
       setUser(null);
       setLoading(false);
     }
@@ -205,21 +247,25 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    // On mount, try to populate user
-    if (!initialized) {
-      fetchMe();
+    if (initialized) return;
+    // Hydrate user immediately from cache to avoid flash logout
+    const cachedUser = getStoredUser();
+    if (cachedUser) {
+      setUser(cachedUser);
+      setLoading(false); // we already have a user; we will still validate token
     }
+    fetchMe();
   }, [initialized, fetchMe]);
 
-  return { 
-    user, 
-    loading, 
-    error, 
-    login, 
-    register, 
-    logout, 
+  return {
+    user,
+    loading,
+    error,
+    login,
+    register,
+    logout,
     refreshUser: fetchMe,
-    accessToken: getStoredToken, 
-    initialized 
+    getAccessToken: getStoredToken,
+    initialized
   };
 }
