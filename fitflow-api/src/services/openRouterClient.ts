@@ -37,7 +37,7 @@ interface OpenRouterResponse {
  */
 class OpenRouterClient {
   private client: AxiosInstance;
-  private defaultModel = 'qwen/qwen3-coder:free'; // User-provided free model
+  private defaultModel = 'qwen/qwen3-vl-30b-a3b-thinking'; // User-provided free model
   private maxRetries = 3;
   private baseDelay = 2000; // Start with 2 seconds
 
