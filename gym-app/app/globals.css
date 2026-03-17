@@ -1,89 +1,59 @@
 @import "tailwindcss";
 
 @theme {
-  --color-primary: #00C853;
+  --color-primary: #00E676;
+  --color-primary-dark: #00C853;
   --color-error: #FF3B30;
-  --color-text-primary: #1A1A1A;
-  --color-text-secondary: #757575;
-  --color-background: #F5F5F5;
+  --color-text-primary: #0a0a0a;
+  --color-text-secondary: #6B7280;
+  --color-background: #f4f4f5;
 }
 
+html {
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
 
-/* Base styles */
 body {
   background-color: var(--color-background);
   color: var(--color-text-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Reusable component classes (use CSS variables to avoid @apply resolution issues) */
-.btn-primary {
-  background-color: var(--color-primary);
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+.stat-hero {
+  font-size: clamp(3rem, 8vw, 5rem);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+}
+
+.label-cap {
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #9CA3AF;
+}
+
+.hero-card {
+  background: linear-gradient(135deg, #0a0a0a 0%, #111827 100%);
   color: white;
-  padding: 0.5rem 1rem;
-  border-radius: 0.5rem;
-  transition: opacity 0.2s;
+  border-radius: 1.5rem;
+  overflow: hidden;
 }
 
-.btn-primary:hover {
-  opacity: 0.9;
-}
+.accent-green { color: #00E676; }
+.accent-orange { color: #FF6D00; }
+.accent-blue { color: #2979FF; }
 
-.card {
-  background-color: white;
-  border-radius: 0.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  padding: 1rem;
-}
-
-.input-field {
-  width: 100%;
-  padding: 0.5rem;
-  border: 1px solid #e5e7eb;
-  border-radius: 0.5rem;
-  outline: none;
-}
-
-.input-field:focus {
-  box-shadow: 0 0 0 2px rgba(0, 200, 83, 0.2);
-}
-
-/* Toast animations */
 @keyframes slide-in {
-  from {
-    transform: translateX(100%);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0);
-    opacity: 1;
-  }
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);   opacity: 1; }
 }
-
-.animate-slide-in {
-  animation: slide-in 0.3s ease-out;
-}
-
-/* Loading spinner */
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-/* Pulse animation for loading states */
-@keyframes pulse {
-  0%, 100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.animate-pulse {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
+.animate-slide-in { animation: slide-in 0.3s ease-out; }

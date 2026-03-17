@@ -1,11 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import MealCard from '@/components/user/MealCard';
 import { useDietPlan } from '@/hooks/useDietPlan';
 import { useUserProgress } from '@/hooks/useUserProgress';
-import { Salad, Flame } from 'lucide-react';
 
 export default function TodayDietPage() {
   const { plans: dietPlans, loading: dietLoading } = useDietPlan();
@@ -13,84 +11,85 @@ export default function TodayDietPage() {
 
   const latestDiet = dietPlans?.[0];
   const meals = latestDiet?.meals || [];
-
-  // Compute total calories and daily target
   const totalCalories = latestDiet?.dailyCalories ?? 0;
+
   const todayStr = new Date().toISOString().slice(0, 10);
   const todayLog = logs.find(log => new Date(log.date).toISOString().slice(0, 10) === todayStr);
   const loggedCalories = todayLog?.meals?.reduce((sum: number, m: any) => sum + (m.calories || 0), 0) ?? 0;
-  const caloriePct = totalCalories > 0 ? Math.min(Math.round((loggedCalories / totalCalories) * 100), 100) : 0;
+  const remaining = Math.max(0, totalCalories - loggedCalories);
+  const pct = totalCalories > 0 ? Math.min(Math.round((loggedCalories / totalCalories) * 100), 100) : 0;
 
   if (dietLoading) {
     return (
-      <div className="space-y-4">
-        {[1, 2, 3].map(i => (
-          <div key={i} className="h-20 bg-gray-100 rounded-2xl animate-pulse" />
-        ))}
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => <div key={i} className="h-20 bg-white rounded-2xl animate-pulse" />)}
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-4 pb-6">
+
+      {/* ── HEADER ── */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center gap-3 mb-1">
-          <div className="w-10 h-10 bg-gradient-to-br from-orange-400 to-red-500 rounded-xl flex items-center justify-center shadow-sm">
-            <Salad className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Today's Diet</h1>
-            <p className="text-sm text-gray-500">Log your meals and stay consistent</p>
-          </div>
-        </div>
+        <p className="label-cap mb-1">Today</p>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Nutrition</h1>
       </motion.div>
 
-      {/* Calorie progress */}
+      {/* ── CALORIE HERO ── */}
       {totalCalories > 0 && (
         <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm"
+          initial={{ opacity: 0, scale: 0.96 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="hero-card p-6"
         >
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items-end justify-between mb-5">
+            {/* Remaining */}
             <div>
-              <p className="text-xs text-gray-400 uppercase tracking-wide font-semibold mb-0.5">Calories</p>
-              <p className="text-lg font-bold text-gray-900">
-                {loggedCalories} <span className="text-gray-400 font-normal">/ {totalCalories} kcal</span>
-              </p>
+              <p className="label-cap text-gray-500 mb-2">Remaining</p>
+              <div className="stat-hero accent-orange num">
+                {remaining}
+                <span className="text-xl font-bold text-gray-600 ml-1.5">kcal</span>
+              </div>
             </div>
-            <div className="flex items-center gap-1.5 text-orange-500">
-              <Flame className="w-5 h-5" />
-              <span className="text-2xl font-extrabold tabular-nums">{caloriePct}%</span>
+            {/* Logged / Total */}
+            <div className="text-right space-y-1">
+              <div>
+                <span className="text-2xl font-black text-white num">{loggedCalories}</span>
+                <span className="text-xs text-gray-500 ml-1">eaten</span>
+              </div>
+              <div>
+                <span className="text-2xl font-black text-gray-500 num">{totalCalories}</span>
+                <span className="text-xs text-gray-600 ml-1">goal</span>
+              </div>
             </div>
           </div>
-          <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+
+          {/* Progress bar */}
+          <div className="h-1.5 bg-white/10 rounded-full overflow-hidden mb-2">
             <motion.div
-              className="h-full bg-gradient-to-r from-orange-400 to-red-400 rounded-full"
-              animate={{ width: `${caloriePct}%` }}
-              transition={{ duration: 0.6, ease: 'easeOut' }}
+              className="h-full rounded-full bg-orange-400"
+              animate={{ width: `${pct}%` }}
+              transition={{ duration: 0.7, ease: 'easeOut' }}
             />
           </div>
+          <p className="text-xs text-gray-500 font-medium">{pct}% of daily goal consumed</p>
         </motion.div>
       )}
 
-      {/* Meals */}
+      {/* ── MEALS ── */}
       {meals.length === 0 ? (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="bg-white rounded-2xl border border-gray-100 p-12 text-center shadow-sm"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="bg-white rounded-2xl border border-gray-100 p-12 text-center"
         >
-          <div className="w-16 h-16 bg-orange-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Salad className="w-8 h-8 text-orange-400" />
-          </div>
-          <h3 className="text-xl font-bold text-gray-900 mb-2">No Diet Plan</h3>
-          <p className="text-gray-500">Ask your trainer to create a nutrition plan for you.</p>
+          <p className="text-2xl font-black text-gray-900 mb-2">No Diet Plan</p>
+          <p className="text-gray-400 text-sm">Ask your trainer to create a nutrition plan.</p>
         </motion.div>
       ) : (
         <motion.div
-          className="space-y-3"
+          className="space-y-2"
           initial="hidden"
           animate="show"
           variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}

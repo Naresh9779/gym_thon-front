@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUserProgress } from "@/hooks/useUserProgress";
 import { useToast } from "@/hooks/useToast";
-import { Check, Loader2, Clock, Flame, Beef, Wheat, Droplets } from "lucide-react";
+import { Check, Loader2, ChevronDown } from "lucide-react";
 
 interface FoodItem { name: string; portion?: string }
 
@@ -26,28 +26,25 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
 
   useEffect(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
-    const already = logs.some((log) => {
+    const already = logs.some(log => {
       const logDate = new Date(log.date).toISOString().slice(0, 10);
       if (logDate !== todayStr) return false;
       return (log.meals || []).some(
-        (m) => (m.mealName || "").trim().toLowerCase() === mealName.trim().toLowerCase()
+        (m: any) => (m.mealName || "").trim().toLowerCase() === mealName.trim().toLowerCase()
       );
     });
     setIsLogged(already);
   }, [logs, mealName]);
 
-  const handleLog = async () => {
+  const handleLog = async (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (isLogging || isLogged) return;
     setIsLogging(true);
     try {
       const result = await logMeal(mealName, calories, macros ? { p: macros.protein, c: macros.carbs, f: macros.fats } : undefined);
       if (result && (result as any).success) {
         setIsLogged(true);
-        if ((result as any).alreadyLogged) {
-          toast.info(`${mealName} already logged today.`);
-        } else {
-          toast.success(`${mealName} logged!`);
-        }
+        toast.success((result as any).alreadyLogged ? `${mealName} already logged.` : `${mealName} logged!`);
       }
     } catch {
       toast.error("Failed to log meal");
@@ -58,93 +55,88 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
   };
 
   const totalMacro = (macros?.protein ?? 0) + (macros?.carbs ?? 0) + (macros?.fats ?? 0);
-  const proteinPct = totalMacro ? Math.round(((macros?.protein ?? 0) / totalMacro) * 100) : 0;
-  const carbsPct = totalMacro ? Math.round(((macros?.carbs ?? 0) / totalMacro) * 100) : 0;
-  const fatsPct = totalMacro ? Math.round(((macros?.fats ?? 0) / totalMacro) * 100) : 0;
+  const pPct = totalMacro ? Math.round(((macros?.protein ?? 0) / totalMacro) * 100) : 0;
+  const cPct = totalMacro ? Math.round(((macros?.carbs ?? 0) / totalMacro) * 100) : 0;
+  const fPct = totalMacro ? Math.round(((macros?.fats ?? 0) / totalMacro) * 100) : 0;
 
   return (
     <motion.div
       layout
-      className={`rounded-2xl border-2 overflow-hidden transition-all ${
-        isLogged ? "border-green-200 bg-green-50/50" : "border-gray-100 bg-white hover:border-gray-200 hover:shadow-sm"
+      className={`rounded-2xl border-2 overflow-hidden transition-colors ${
+        isLogged ? "border-[#00E676] bg-black" : "border-gray-100 bg-white"
       }`}
     >
-      {/* Header */}
+      {/* Header row */}
       <div
-        className="flex items-center justify-between p-4 cursor-pointer"
+        className="flex items-center gap-3 p-4 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
-        <div className="flex items-center gap-3">
-          <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-lg ${isLogged ? "bg-green-100" : "bg-gray-100"}`}>
-            {isLogged ? "✅" : "🍽"}
-          </div>
-          <div>
-            <h4 className="font-semibold text-gray-900">{mealName}</h4>
-            {time && (
-              <span className="flex items-center gap-1 text-xs text-gray-400 mt-0.5">
-                <Clock className="w-3 h-3" /> {time}
-              </span>
-            )}
-          </div>
+        {/* Left: name + time */}
+        <div className="flex-1 min-w-0">
+          <p className={`font-black text-lg leading-tight ${isLogged ? "text-[#00E676]" : "text-gray-900"}`}>
+            {mealName}
+          </p>
+          {time && (
+            <p className={`text-xs font-semibold mt-0.5 ${isLogged ? "text-gray-500" : "text-gray-400"}`}>{time}</p>
+          )}
         </div>
-        <div className="flex items-center gap-2">
+
+        {/* Right: calories + chevron */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {calories !== undefined && (
-            <span className="flex items-center gap-1 text-sm font-semibold text-orange-500">
-              <Flame className="w-3.5 h-3.5" /> {calories}
+            <span className={`text-xl font-black num ${isLogged ? "text-[#00E676]" : "text-orange-500"}`}>
+              {calories}<span className="text-sm font-semibold text-gray-400 ml-0.5">cal</span>
             </span>
           )}
           <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
+            <ChevronDown className={`w-4 h-4 ${isLogged ? "text-gray-600" : "text-gray-300"}`} />
           </motion.div>
         </div>
       </div>
 
-      {/* Expandable content */}
+      {/* Expandable */}
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
-            key="content"
+            key="body"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.25, ease: "easeInOut" }}
+            transition={{ duration: 0.22, ease: "easeInOut" }}
           >
-            <div className="px-4 pb-4 space-y-4 border-t border-gray-100 pt-3">
-              {/* Foods */}
+            <div className={`px-4 pb-4 pt-2 space-y-4 border-t ${isLogged ? "border-white/10" : "border-gray-50"}`}>
+
+              {/* Food list */}
               {foods.length > 0 && (
                 <div className="space-y-1.5">
                   {foods.map((f, i) => (
-                    <div key={i} className="flex items-center justify-between text-sm">
-                      <span className="text-gray-700">{f.name}</span>
-                      {f.portion && <span className="text-gray-400 text-xs">{f.portion}</span>}
+                    <div key={i} className="flex items-center justify-between">
+                      <span className={`text-sm font-semibold ${isLogged ? "text-gray-300" : "text-gray-700"}`}>{f.name}</span>
+                      {f.portion && <span className={`text-xs ${isLogged ? "text-gray-600" : "text-gray-400"}`}>{f.portion}</span>}
                     </div>
                   ))}
                 </div>
               )}
 
-              {/* Macro bar */}
+              {/* Macro bar + numbers */}
               {macros && totalMacro > 0 && (
-                <div className="space-y-2">
-                  <div className="flex h-2 rounded-full overflow-hidden gap-0.5">
-                    <div className="bg-red-400 rounded-l-full transition-all" style={{ width: `${proteinPct}%` }} />
-                    <div className="bg-yellow-400 transition-all" style={{ width: `${carbsPct}%` }} />
-                    <div className="bg-blue-400 rounded-r-full transition-all" style={{ width: `${fatsPct}%` }} />
+                <div>
+                  <div className="flex h-1.5 rounded-full overflow-hidden gap-px mb-3">
+                    <div className="bg-red-400 rounded-l-full" style={{ width: `${pPct}%` }} />
+                    <div className="bg-yellow-400" style={{ width: `${cPct}%` }} />
+                    <div className="bg-blue-400 rounded-r-full" style={{ width: `${fPct}%` }} />
                   </div>
                   <div className="grid grid-cols-3 gap-2">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <Beef className="w-3 h-3 text-red-400" />
-                      <span>{macros.protein ?? 0}g protein</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <Wheat className="w-3 h-3 text-yellow-400" />
-                      <span>{macros.carbs ?? 0}g carbs</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                      <Droplets className="w-3 h-3 text-blue-400" />
-                      <span>{macros.fats ?? 0}g fats</span>
-                    </div>
+                    {[
+                      { label: "Protein", val: macros.protein ?? 0, color: "text-red-400" },
+                      { label: "Carbs",   val: macros.carbs ?? 0,   color: "text-yellow-500" },
+                      { label: "Fats",    val: macros.fats ?? 0,    color: "text-blue-400" },
+                    ].map(m => (
+                      <div key={m.label} className="text-center">
+                        <p className={`text-xl font-black num ${isLogged ? m.color : m.color}`}>{m.val}<span className="text-xs font-bold text-gray-400 ml-0.5">g</span></p>
+                        <p className="label-cap">{m.label}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -154,17 +146,13 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
                 whileTap={{ scale: 0.97 }}
                 onClick={handleLog}
                 disabled={isLogged || isLogging}
-                className={`w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 transition-all ${
+                className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${
                   isLogged
-                    ? "bg-green-100 text-green-600 cursor-default"
-                    : "bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 shadow-sm"
+                    ? "bg-[#00E676]/20 text-[#00E676] cursor-default"
+                    : "bg-black text-[#00E676] hover:bg-gray-900 shadow-lg"
                 }`}
               >
-                {isLogging ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : isLogged ? (
-                  <Check className="w-4 h-4" />
-                ) : null}
+                {isLogging ? <Loader2 className="w-4 h-4 animate-spin" /> : isLogged ? <Check className="w-4 h-4" /> : null}
                 {isLogged ? "Logged" : isLogging ? "Logging..." : "Log Meal"}
               </motion.button>
             </div>

@@ -3,14 +3,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUserProgress } from "@/hooks/useUserProgress";
-import { Play, SkipForward, Square, CheckCircle2 } from "lucide-react";
+import { SkipForward, Square, CheckCircle2 } from "lucide-react";
 
-interface Exercise {
-  name: string;
-  sets: number;
-  reps: number | string;
-  rest: number;
-}
+interface Exercise { name: string; sets: number; reps: number | string; rest: number; }
 
 interface WorkoutTimerProps {
   exercises: Exercise[];
@@ -20,7 +15,7 @@ interface WorkoutTimerProps {
   day?: string;
 }
 
-export default function WorkoutTimer({ exercises, onComplete, onStop, workoutId, day }: WorkoutTimerProps) {
+export default function WorkoutTimer({ exercises, onComplete, onStop, day }: WorkoutTimerProps) {
   const [currentIdx, setCurrentIdx] = useState(0);
   const [currentSet, setCurrentSet] = useState(1);
   const [resting, setResting] = useState(false);
@@ -29,12 +24,14 @@ export default function WorkoutTimer({ exercises, onComplete, onStop, workoutId,
   const { logWorkout } = useUserProgress();
 
   const ex = exercises[currentIdx];
-  const overallProgress = ((currentIdx + (currentSet - 1) / ex.sets) / exercises.length) * 100;
+  const overallPct = ((currentIdx + (currentSet - 1) / ex.sets) / exercises.length) * 100;
+  const restPct = ex.rest > 0 ? ((ex.rest - restSecs) / ex.rest) * 100 : 100;
+  const circumference = 2 * Math.PI * 42;
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setTotalSecs((t) => t + 1);
-      if (resting && restSecs > 0) setRestSecs((t) => t - 1);
+      setTotalSecs(t => t + 1);
+      if (resting && restSecs > 0) setRestSecs(t => t - 1);
       else if (resting && restSecs === 0) setResting(false);
     }, 1000);
     return () => clearInterval(timer);
@@ -44,106 +41,80 @@ export default function WorkoutTimer({ exercises, onComplete, onStop, workoutId,
 
   const handleSetDone = () => {
     if (currentSet < ex.sets) {
-      setCurrentSet(currentSet + 1);
-      setResting(true);
-      setRestSecs(ex.rest);
+      setCurrentSet(currentSet + 1); setResting(true); setRestSecs(ex.rest);
     } else if (currentIdx < exercises.length - 1) {
-      setCurrentIdx(currentIdx + 1);
-      setCurrentSet(1);
-      setResting(true);
-      setRestSecs(ex.rest);
+      setCurrentIdx(currentIdx + 1); setCurrentSet(1); setResting(true); setRestSecs(ex.rest);
     } else {
-      handleWorkoutComplete();
+      logWorkout(day || "Day 1", exercises.length, exercises.length, totalSecs).catch(() => {});
       onComplete();
     }
   };
 
-  const handleWorkoutComplete = async () => {
-    try {
-      await logWorkout(day || "Day 1", exercises.length, exercises.length, totalSecs);
-    } catch {}
-  };
-
-  // Rest ring — percentage of rest completed
-  const restPct = ex.rest > 0 ? ((ex.rest - restSecs) / ex.rest) * 100 : 100;
-  const circumference = 2 * Math.PI * 38;
-
   return (
-    <div className="rounded-2xl bg-gradient-to-br from-gray-900 to-gray-800 text-white overflow-hidden shadow-2xl">
+    <div className="rounded-2xl bg-black text-white overflow-hidden">
       {/* Top bar */}
-      <div className="px-6 pt-5 pb-4 border-b border-white/10">
+      <div className="px-5 pt-5 pb-4 border-b border-white/10">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-widest mb-1">Workout Active</p>
-            <h3 className="text-lg font-bold">
-              Exercise {currentIdx + 1} / {exercises.length}
-            </h3>
+            <p className="label-cap text-gray-600 mb-1">Exercise {currentIdx + 1}/{exercises.length}</p>
+            <p className="text-base font-black text-white">Workout Active</p>
           </div>
           <div className="text-right">
-            <div className="text-3xl font-mono font-bold text-green-400">{fmt(totalSecs)}</div>
-            <p className="text-xs text-gray-400">elapsed</p>
+            <p className="text-3xl font-black font-mono text-[#00E676] num">{fmt(totalSecs)}</p>
+            <p className="label-cap text-gray-600">elapsed</p>
           </div>
         </div>
-
-        {/* Overall progress bar */}
-        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+        {/* Overall bar */}
+        <div className="h-1 bg-white/10 rounded-full overflow-hidden">
           <motion.div
-            className="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full"
-            animate={{ width: `${overallProgress}%` }}
+            className="h-full bg-[#00E676] rounded-full"
+            animate={{ width: `${overallPct}%` }}
             transition={{ duration: 0.5 }}
           />
         </div>
       </div>
 
-      {/* Main exercise panel */}
-      <div className="p-6">
+      {/* Main */}
+      <div className="p-5">
         <AnimatePresence mode="wait">
           {resting ? (
-            /* Rest screen */
             <motion.div
               key="rest"
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="text-center py-4"
+              className="text-center py-2"
             >
-              <p className="text-gray-400 text-sm mb-4 uppercase tracking-widest">Rest Time</p>
-
-              {/* Circular countdown */}
-              <div className="relative w-24 h-24 mx-auto mb-4">
-                <svg className="w-24 h-24 -rotate-90" viewBox="0 0 88 88">
-                  <circle cx="44" cy="44" r="38" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+              <p className="label-cap text-gray-600 mb-5">Rest Time</p>
+              {/* SVG ring */}
+              <div className="relative w-28 h-28 mx-auto mb-5">
+                <svg className="w-28 h-28 -rotate-90" viewBox="0 0 96 96">
+                  <circle cx="48" cy="48" r="42" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="6" />
                   <motion.circle
-                    cx="44" cy="44" r="38"
-                    fill="none"
-                    stroke="#4ade80"
-                    strokeWidth="6"
-                    strokeLinecap="round"
+                    cx="48" cy="48" r="42"
+                    fill="none" stroke="#00E676" strokeWidth="6" strokeLinecap="round"
                     strokeDasharray={circumference}
                     strokeDashoffset={circumference - (restPct / 100) * circumference}
                     transition={{ duration: 1, ease: "linear" }}
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
-                  <span className="text-3xl font-bold font-mono">{restSecs}</span>
+                  <span className="text-4xl font-black font-mono text-[#00E676] num">{restSecs}</span>
                 </div>
               </div>
-
-              <p className="text-gray-400 text-sm mb-5">
-                Next: <span className="text-white font-semibold">
-                  {currentSet < ex.sets ? `Set ${currentSet + 1} of ${ex.sets}` : exercises[currentIdx + 1]?.name || "Last exercise!"}
+              <p className="text-sm text-gray-400 mb-5">
+                Next: <span className="text-white font-bold">
+                  {currentSet < ex.sets ? `Set ${currentSet + 1}` : exercises[currentIdx + 1]?.name || "Final set!"}
                 </span>
               </p>
-
               <button
                 onClick={() => setResting(false)}
-                className="flex items-center gap-2 mx-auto px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-medium transition-all"
+                className="flex items-center gap-2 mx-auto px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-sm font-bold transition-all"
               >
                 <SkipForward className="w-4 h-4" /> Skip Rest
               </button>
             </motion.div>
           ) : (
-            /* Active exercise screen */
             <motion.div
               key={`${currentIdx}-${currentSet}`}
               initial={{ opacity: 0, x: 20 }}
@@ -151,56 +122,51 @@ export default function WorkoutTimer({ exercises, onComplete, onStop, workoutId,
               exit={{ opacity: 0, x: -20 }}
               className="space-y-5"
             >
-              {/* Exercise name + sets */}
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <h4 className="text-2xl font-bold mb-1">{ex.name}</h4>
-                  <div className="flex items-center gap-2">
-                    {Array.from({ length: ex.sets }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
-                          i < currentSet - 1
-                            ? "bg-green-500 text-white"
-                            : i === currentSet - 1
-                            ? "bg-white text-gray-900 ring-2 ring-green-400"
-                            : "bg-white/10 text-gray-400"
-                        }`}
-                      >
-                        {i < currentSet - 1 ? <CheckCircle2 className="w-3.5 h-3.5" /> : i + 1}
-                      </div>
-                    ))}
-                    <span className="text-gray-400 text-sm ml-1">sets</span>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-5xl font-extrabold text-green-400">{ex.reps}</div>
-                  <p className="text-gray-400 text-xs">reps</p>
-                </div>
+              <div>
+                <p className="label-cap text-gray-600 mb-1">Exercise</p>
+                <h4 className="text-2xl font-black text-white leading-tight">{ex.name}</h4>
               </div>
 
-              {/* Complete set button */}
+              {/* Set dots */}
+              <div className="flex items-center gap-2">
+                {Array.from({ length: ex.sets }).map((_, i) => (
+                  <div
+                    key={i}
+                    className={`h-1.5 flex-1 rounded-full transition-all ${
+                      i < currentSet - 1 ? "bg-[#00E676]" : i === currentSet - 1 ? "bg-white" : "bg-white/20"
+                    }`}
+                  />
+                ))}
+                <span className="text-xs text-gray-500 font-bold ml-1">set {currentSet}/{ex.sets}</span>
+              </div>
+
+              {/* Big rep count */}
+              <div className="text-center py-2">
+                <p className="stat-hero text-[#00E676] num">{ex.reps}</p>
+                <p className="label-cap text-gray-600 mt-1">reps</p>
+              </div>
+
+              {/* Complete set */}
               <motion.button
                 whileTap={{ scale: 0.97 }}
-                whileHover={{ scale: 1.01 }}
                 onClick={handleSetDone}
-                className="w-full py-4 rounded-2xl bg-gradient-to-r from-green-400 to-emerald-500 text-gray-900 font-bold text-base flex items-center justify-center gap-2 shadow-lg shadow-green-900/30 hover:shadow-green-900/50 transition-all"
+                className="w-full py-4 rounded-2xl bg-[#00E676] text-black font-black text-base flex items-center justify-center gap-2"
               >
-                <Play className="w-5 h-5" fill="currentColor" />
+                <CheckCircle2 className="w-5 h-5" />
                 {currentIdx === exercises.length - 1 && currentSet === ex.sets
                   ? "Complete Workout"
-                  : `Complete Set ${currentSet}`}
+                  : `Done · Set ${currentSet}`}
               </motion.button>
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Stop button */}
-      <div className="px-6 pb-5">
+      {/* Stop */}
+      <div className="px-5 pb-5">
         <button
           onClick={onStop}
-          className="w-full py-2.5 rounded-xl border border-white/10 text-gray-400 hover:text-white hover:border-white/20 text-sm font-medium flex items-center justify-center gap-2 transition-all"
+          className="w-full py-2.5 rounded-xl border border-white/10 text-gray-500 hover:text-white hover:border-white/20 text-sm font-bold flex items-center justify-center gap-2 transition-all"
         >
           <Square className="w-3.5 h-3.5" /> Stop Workout
         </button>

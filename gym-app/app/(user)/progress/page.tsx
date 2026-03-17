@@ -7,15 +7,6 @@ import { useWorkoutPlans } from '@/hooks/useWorkoutPlan';
 import { useDietPlan } from '@/hooks/useDietPlan';
 import { useUserProgress } from '@/hooks/useUserProgress';
 import { useAuth } from '@/hooks/useAuth';
-import { Flame, Dumbbell, Salad, Calendar, TrendingUp } from 'lucide-react';
-
-interface StatItem {
-  label: string;
-  value: string | number;
-  icon: React.ReactNode;
-  color: string;
-  bg: string;
-}
 
 export default function ProgressPage() {
   const { plans: workoutPlans, loading: workoutLoading } = useWorkoutPlans();
@@ -42,130 +33,128 @@ export default function ProgressPage() {
             date: d.date.slice(5),
             workouts: d.workouts,
             meals: d.meals,
-            value: d.workouts * 2 + d.meals
+            value: d.workouts * 2 + d.meals,
           })));
         }
-      } catch {
-        // ignore
-      }
+      } catch { /* ignore */ }
     }
     loadTrends();
   }, [getAccessToken]);
 
-  const statCards: StatItem[] = [
-    { label: 'Day Streak', value: stats.currentStreak, icon: <Flame className="w-5 h-5" />, color: 'text-orange-500', bg: 'bg-orange-50' },
-    { label: 'Workouts Done', value: stats.workoutsCompleted, icon: <Dumbbell className="w-5 h-5" />, color: 'text-blue-500', bg: 'bg-blue-50' },
-    { label: 'Meals Logged', value: stats.totalMealsLogged, icon: <Salad className="w-5 h-5" />, color: 'text-green-500', bg: 'bg-green-50' },
-    { label: 'Active Days', value: stats.activeDays, icon: <Calendar className="w-5 h-5" />, color: 'text-purple-500', bg: 'bg-purple-50' },
+  // Big 4 stats
+  const statGrid = [
+    { label: 'Day Streak',    value: stats.currentStreak,    unit: 'd',   color: 'accent-green' },
+    { label: 'Workouts Done', value: stats.workoutsCompleted, unit: '',    color: 'text-gray-900' },
+    { label: 'Meals Logged',  value: stats.totalMealsLogged,  unit: '',    color: 'text-gray-900' },
+    { label: 'Active Days',   value: stats.activeDays,        unit: 'd',   color: 'accent-blue' },
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
+    <div className="space-y-4 pb-6">
+
+      {/* ── HEADER ── */}
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-purple-400 to-indigo-600 rounded-xl flex items-center justify-center shadow-sm">
-            <TrendingUp className="w-5 h-5 text-white" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Progress</h1>
-            <p className="text-sm text-gray-500">Your fitness journey stats</p>
-          </div>
-        </div>
+        <p className="label-cap mb-1">Your stats</p>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Progress</h1>
       </motion.div>
 
-      {/* Stat cards */}
+      {/* ── BIG STAT GRID ── */}
       <motion.div
-        className="grid grid-cols-2 sm:grid-cols-4 gap-3"
+        className="grid grid-cols-2 gap-3"
         initial="hidden"
         animate="show"
         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.07 } } }}
       >
-        {statCards.map((s) => (
+        {statGrid.map((s) => (
           <motion.div
             key={s.label}
-            variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}
-            className="bg-white rounded-2xl border border-gray-100 p-4 shadow-sm"
+            variants={{ hidden: { opacity: 0, scale: 0.95 }, show: { opacity: 1, scale: 1 } }}
+            className="bg-white rounded-2xl border border-gray-100 p-5"
           >
+            <p className="label-cap mb-3">{s.label}</p>
             {loading ? (
-              <div className="space-y-2 animate-pulse">
-                <div className="h-8 bg-gray-100 rounded-lg w-12" />
-                <div className="h-3 bg-gray-100 rounded w-16" />
-              </div>
+              <div className="h-14 bg-gray-100 rounded-xl animate-pulse" />
             ) : (
-              <>
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${s.bg} ${s.color}`}>
-                  {s.icon}
-                </div>
-                <p className="text-2xl font-extrabold text-gray-900 tabular-nums">{s.value}</p>
-                <p className="text-xs text-gray-400 font-medium mt-0.5">{s.label}</p>
-              </>
+              <div className={`stat-hero num ${s.color}`}>
+                {s.value}
+                {s.unit && <span className="text-2xl font-bold text-gray-300 ml-1">{s.unit}</span>}
+              </div>
             )}
           </motion.div>
         ))}
       </motion.div>
 
-      {/* Activity summary + chart */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="bg-white rounded-2xl border border-gray-100 p-5 shadow-sm"
-        >
-          <h3 className="font-bold text-gray-900 mb-1">Current Plans</h3>
-          <p className="text-xs text-gray-400 mb-4">Active workout & nutrition</p>
+      {/* ── TREND CHART ── full width */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+      >
+        <ProgressChart data={trendData} />
+      </motion.div>
+
+      {/* ── CURRENT PLANS ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.3 }}
+        className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+      >
+        <div className="p-5 border-b border-gray-50">
+          <p className="label-cap mb-0.5">Active programs</p>
+          <h3 className="text-lg font-black text-gray-900">Current Plans</h3>
+        </div>
+        <div className="divide-y divide-gray-50">
           {loading ? (
-            <div className="space-y-3 animate-pulse">
-              {[1, 2, 3].map(i => <div key={i} className="h-10 bg-gray-100 rounded-xl" />)}
+            <div className="p-5 space-y-3 animate-pulse">
+              <div className="h-10 bg-gray-100 rounded-xl" />
+              <div className="h-10 bg-gray-100 rounded-xl" />
             </div>
           ) : (
-            <div className="space-y-3">
+            <>
               {latestWorkout && (
-                <div className="flex items-center gap-3 p-3 bg-blue-50 rounded-xl">
-                  <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Dumbbell className="w-4 h-4 text-blue-600" />
+                <div className="flex items-center justify-between p-5">
+                  <div>
+                    <p className="label-cap mb-0.5">Workout</p>
+                    <p className="font-black text-gray-900">{latestWorkout.name}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-blue-500 font-semibold">Workout Plan</p>
-                    <p className="text-sm font-semibold text-gray-800 truncate">{latestWorkout.name}</p>
-                  </div>
+                  <span className="text-xs font-bold bg-black text-[#00E676] px-3 py-1.5 rounded-full">
+                    {latestWorkout.days?.length || 0}d / wk
+                  </span>
                 </div>
               )}
               {latestDiet && (
-                <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl">
-                  <div className="w-8 h-8 bg-orange-100 rounded-lg flex items-center justify-center">
-                    <Flame className="w-4 h-4 text-orange-500" />
+                <div className="flex items-center justify-between p-5">
+                  <div>
+                    <p className="label-cap mb-0.5">Nutrition</p>
+                    <p className="font-black text-gray-900">{latestDiet.name || 'Diet Plan'}</p>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-xs text-orange-500 font-semibold">Daily Target</p>
-                    <p className="text-sm font-semibold text-gray-800">{latestDiet.dailyCalories} kcal</p>
-                  </div>
+                  <span className="text-xs font-bold bg-orange-50 text-orange-600 px-3 py-1.5 rounded-full">
+                    {latestDiet.dailyCalories} kcal
+                  </span>
                 </div>
               )}
-              <div className="flex items-center gap-3 p-3 bg-gray-50 rounded-xl">
-                <div className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <Calendar className="w-4 h-4 text-gray-500" />
+              {!latestWorkout && !latestDiet && (
+                <div className="p-5 text-center text-gray-400 text-sm">No active plans</div>
+              )}
+              <div className="flex p-5 pt-3 pb-4">
+                <div className="flex-1 text-center border-r border-gray-100">
+                  <p className="text-2xl font-black text-gray-900 num">{stats.workoutsCompleted}</p>
+                  <p className="label-cap mt-0.5">workouts</p>
                 </div>
-                <div>
-                  <p className="text-xs text-gray-400 font-semibold">Last 30 Days</p>
-                  <p className="text-sm font-semibold text-gray-800">
-                    {stats.workoutsCompleted} workouts · {stats.totalMealsLogged} meals
-                  </p>
+                <div className="flex-1 text-center border-r border-gray-100">
+                  <p className="text-2xl font-black text-gray-900 num">{stats.totalMealsLogged}</p>
+                  <p className="label-cap mt-0.5">meals</p>
+                </div>
+                <div className="flex-1 text-center">
+                  <p className="text-2xl font-black text-gray-900 num">{stats.activeDays}</p>
+                  <p className="label-cap mt-0.5">active days</p>
                 </div>
               </div>
-            </div>
+            </>
           )}
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-        >
-          <ProgressChart data={trendData} />
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
