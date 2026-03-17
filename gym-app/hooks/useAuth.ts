@@ -80,38 +80,93 @@ export function useAuth() {
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
 
-  // Track if a refresh is currently in progress to avoid duplicate calls from the interval
   const refreshingRef = useRef(false);
 
-  // We will always read the latest token from storage when needed instead of storing in state.
-  // This avoids stale values on tab focus/other updates.
+  // Stable refs so the token-monitoring interval can always call the latest version
+  // without being listed as a useEffect dependency (avoids temporal dead zone).
+  const fetchMeRef = useRef<(() => Promise<User | null>) | null>(null);
+  const logoutRef = useRef<(() => Promise<void>) | null>(null);
 
-  // Token expiry monitoring
+  const logout = useCallback(async () => {
+    setLoading(true); setError(null);
+    try {
+      const token = getStoredToken();
+      if (token) {
+        await fetch(`${BASE_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+      }
+    } finally {
+      clearStoredTokens();
+      try { localStorage.removeItem('authUser'); } catch {}
+      setUser(null);
+      setLoading(false);
+    }
+  }, []);
+
+  const fetchMe = useCallback(async () => {
+    const token = getStoredToken();
+    if (!token) {
+      setLoading(false);
+      setInitialized(true);
+      return null;
+    }
+    try {
+      setLoading(true);
+      const res = await fetch(`${BASE_URL}/api/auth/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.ok && json.data?.user) {
+        setUser(json.data.user);
+        setLoading(false);
+        setInitialized(true);
+        return json.data.user as User;
+      }
+      clearStoredTokens();
+      setUser(null);
+      setLoading(false);
+      setInitialized(true);
+      return null;
+    } catch {
+      clearStoredTokens();
+      setUser(null);
+      setLoading(false);
+      setInitialized(true);
+      return null;
+    }
+  }, []);
+
+  // Keep refs in sync with the latest function instances
+  useEffect(() => { fetchMeRef.current = fetchMe; }, [fetchMe]);
+  useEffect(() => { logoutRef.current = logout; }, [logout]);
+
+  // Token expiry monitoring — runs once on mount.
+  // Uses refs to call fetchMe/logout so it doesn't need them in the deps array.
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const attemptRefresh = async () => {
-      if (refreshingRef.current) return; // already refreshing
+      if (refreshingRef.current) return;
       const rt = getStoredRefreshToken();
-      if (!rt) return; // cannot refresh without refresh token
+      if (!rt) return;
       refreshingRef.current = true;
       try {
         const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken: rt })
+          body: JSON.stringify({ refreshToken: rt }),
         });
         const json = await res.json();
         if (json.ok && json.data?.accessToken) {
-          setStoredTokens(json.data.accessToken); // keep existing refresh token
-          // Refresh user data after successful token renewal
-          await fetchMe();
+          setStoredTokens(json.data.accessToken);
+          await fetchMeRef.current?.();
           return;
         }
-        // Failed refresh -> logout
-        logout();
+        await logoutRef.current?.();
       } catch {
-        logout();
+        await logoutRef.current?.();
       } finally {
         refreshingRef.current = false;
       }
@@ -119,26 +174,24 @@ export function useAuth() {
 
     const checkToken = () => {
       const token = getStoredToken();
-      if (!token) return; // not logged in
+      if (!token) return;
       try {
         const parts = token.split('.');
         if (parts.length !== 3) throw new Error('Malformed JWT');
         const payload = JSON.parse(atob(parts[1]));
-        const expMs = payload.exp * 1000;
-        const timeLeft = expMs - Date.now();
-        // If expired or less than 2 minutes left, try refreshing instead of logging out.
+        const timeLeft = payload.exp * 1000 - Date.now();
         if (timeLeft <= 0 || timeLeft < 120000) {
           attemptRefresh();
         }
-      } catch (e) {
-          attemptRefresh();
+      } catch {
+        attemptRefresh();
       }
     };
 
     checkToken();
     const interval = setInterval(checkToken, 30000);
     return () => clearInterval(interval);
-  }, [fetchMe, logout]);
+  }, []); // safe — uses refs internally
 
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true); setError(null);
@@ -188,65 +241,13 @@ export function useAuth() {
     }
   }, []);
 
-  const logout = useCallback(async () => {
-    setLoading(true); setError(null);
-    try {
-      const token = getStoredToken();
-      if (token) {
-        await fetch(`${BASE_URL}/api/auth/logout`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}` },
-        });
-      }
-    } finally {
-      clearStoredTokens();
-      try { localStorage.removeItem('authUser'); } catch {}
-      setUser(null);
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchMe = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) {
-      setLoading(false);
-      setInitialized(true);
-      return null;
-    }
-    try {
-      setLoading(true);
-      const res = await fetch(`${BASE_URL}/api/auth/me`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await res.json();
-      if (json.ok && json.data?.user) {
-        setUser(json.data.user);
-        setLoading(false);
-        setInitialized(true);
-        return json.data.user as User;
-      }
-      // Token is invalid, clear it
-      clearStoredTokens();
-      setUser(null);
-      setLoading(false);
-      setInitialized(true);
-      return null;
-    } catch {
-      clearStoredTokens();
-      setUser(null);
-      setLoading(false);
-      setInitialized(true);
-      return null;
-    }
-  }, []);
-
+  // Hydrate from cache on first mount, then validate with server
   useEffect(() => {
     if (initialized) return;
-    // Hydrate user immediately from cache to avoid flash logout
     const cachedUser = getStoredUser();
     if (cachedUser) {
       setUser(cachedUser);
-      setLoading(false); // we already have a user; we will still validate token
+      setLoading(false);
     }
     fetchMe();
   }, [initialized, fetchMe]);
@@ -260,6 +261,6 @@ export function useAuth() {
     logout,
     refreshUser: fetchMe,
     getAccessToken: getStoredToken,
-    initialized
+    initialized,
   };
 }
