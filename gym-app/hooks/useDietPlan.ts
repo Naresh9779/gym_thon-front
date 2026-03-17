@@ -4,12 +4,12 @@ import { fetchWithAuth } from "@/lib/api";
 import { useAuth } from "./useAuth";
 
 export function useDietPlan() {
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const token = getAccessToken();
 
   const refresh = useCallback(async (startDate?: string, endDate?: string) => {
     if (!token) return;

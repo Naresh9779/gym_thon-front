@@ -38,12 +38,12 @@ export function useUserProgress() {
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
 
   const fetchProgress = useCallback(async () => {
     try {
       setLoading(true);
-      const token = accessToken();
+      const token = getAccessToken();
       
       // Fetch stats from backend
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/progress/stats?days=30`, {
@@ -70,7 +70,7 @@ export function useUserProgress() {
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [getAccessToken]);
 
   useEffect(() => {
     fetchProgress();
@@ -78,7 +78,7 @@ export function useUserProgress() {
 
   const logWorkout = useCallback(async (day: string, completedExercises: number, totalExercises: number, durationSec?: number) => {
     try {
-      const token = accessToken();
+      const token = getAccessToken();
       const date = new Date().toISOString().slice(0, 10);
       
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/progress/workout`, {
@@ -104,11 +104,11 @@ export function useUserProgress() {
       setError('Failed to log workout progress');
       return false;
     }
-  }, [accessToken, fetchProgress]);
+  }, [getAccessToken, fetchProgress]);
 
   const logMeal = useCallback(async (mealName: string, calories?: number, macros?: { p?: number; c?: number; f?: number }) => {
     try {
-      const token = accessToken();
+      const token = getAccessToken();
       const date = new Date().toISOString().slice(0, 10);
       
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/progress/meal`, {
@@ -140,7 +140,7 @@ export function useUserProgress() {
       setError('Failed to log meal progress');
       return { success: false } as const;
     }
-  }, [accessToken, fetchProgress]);
+  }, [getAccessToken, fetchProgress]);
 
   return {
     logs,

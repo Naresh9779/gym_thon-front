@@ -1,39 +1,41 @@
 @import "tailwindcss";
 
+/* ─── Design tokens ─── */
 @theme {
   --color-primary: #00E676;
   --color-primary-dark: #00C853;
   --color-error: #FF3B30;
-  --color-text-primary: #0a0a0a;
-  --color-text-secondary: #6B7280;
   --color-background: #f4f4f5;
 }
 
+/* ─── Base ─── */
 html {
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
-
 body {
   background-color: var(--color-background);
-  color: var(--color-text-primary);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-.num {
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "tnum";
+/* ─── Custom utilities (Tailwind v4 syntax) ─── */
+
+@utility hero-card {
+  background: linear-gradient(135deg, #0a0a0a 0%, #111827 100%);
+  color: white;
+  border-radius: 1.5rem;
+  overflow: hidden;
 }
 
-.stat-hero {
-  font-size: clamp(3rem, 8vw, 5rem);
+@utility stat-hero {
+  font-size: clamp(2.8rem, 8vw, 5rem);
   font-weight: 900;
   line-height: 1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
 }
 
-.label-cap {
+@utility label-cap {
   font-size: 0.65rem;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -41,19 +43,19 @@ body {
   color: #9CA3AF;
 }
 
-.hero-card {
-  background: linear-gradient(135deg, #0a0a0a 0%, #111827 100%);
-  color: white;
-  border-radius: 1.5rem;
-  overflow: hidden;
+@utility num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
-.accent-green { color: #00E676; }
-.accent-orange { color: #FF6D00; }
-.accent-blue { color: #2979FF; }
-
-@keyframes slide-in {
-  from { transform: translateX(100%); opacity: 0; }
-  to   { transform: translateX(0);   opacity: 1; }
+@utility accent-green {
+  color: #00E676;
 }
-.animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+@utility accent-orange {
+  color: #FF6D00;
+}
+
+@utility accent-blue {
+  color: #2979FF;
+}

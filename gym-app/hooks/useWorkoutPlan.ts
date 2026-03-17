@@ -1,9 +1,11 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
 import { fetchWithAuth } from "@/lib/api";
+import { useAuth } from "./useAuth";
 
 export function useWorkoutPlans() {
-  const token = typeof window !== "undefined" ? localStorage.getItem("accessToken") : null;
+  const { getAccessToken } = useAuth();
+  const token = getAccessToken();
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
