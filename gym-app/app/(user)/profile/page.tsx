@@ -11,7 +11,7 @@ import SubscriptionCard from '@/components/user/SubscriptionCard';
 
 export default function ProfilePage() {
   const router = useRouter();
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, refreshUser, getAccessToken } = useAuth();
   const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [formData, setFormData] = useState({
@@ -49,7 +49,7 @@ export default function ProfilePage() {
     if (!user?.id) return;
     
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = getAccessToken();
       
       // Map frontend goal to backend enum
       const goalMapping: { [key: string]: string } = {
@@ -96,8 +96,7 @@ export default function ProfilePage() {
         const data = await response.json();
         toast.error(`Failed to update profile: ${data.error?.message || 'Unknown error'}`);
       }
-    } catch (error) {
-      console.error('Error updating profile:', error);
+    } catch {
       toast.error('Failed to update profile. Please try again.');
     }
   };

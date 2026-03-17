@@ -5,9 +5,11 @@ import Select from '@/components/ui/Select';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/useToast';
 
 export default function SettingsPage() {
-  const { user, refreshUser } = useAuth();
+  const { user, refreshUser, getAccessToken } = useAuth();
+  const toast = useToast();
   const [units, setUnits] = useState('metric');
   const [notifications, setNotifications] = useState(true);
   const [timezone, setTimezone] = useState('UTC');
@@ -32,7 +34,7 @@ export default function SettingsPage() {
     
     setSaving(true);
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = getAccessToken();
       const preferences = [];
       if (units === 'imperial') preferences.push('imperial');
       if (notifications) preferences.push('notifications');
@@ -50,15 +52,14 @@ export default function SettingsPage() {
       });
 
       if (response.ok) {
-        alert('Settings saved successfully!');
+        toast.success('Settings saved successfully!');
         await refreshUser();
       } else {
         const data = await response.json();
-        alert(`Failed to save settings: ${data.error?.message || 'Unknown error'}`);
+        toast.error(`Failed to save settings: ${data.error?.message || 'Unknown error'}`);
       }
-    } catch (error) {
-      console.error('Error saving settings:', error);
-      alert('Failed to save settings. Please try again.');
+    } catch {
+      toast.error('Failed to save settings. Please try again.');
     } finally {
       setSaving(false);
     }

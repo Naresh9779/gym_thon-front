@@ -2,7 +2,6 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:4000";
-console.log("useAuth BASE_URL:", BASE_URL);
 
 type User = {
   id: string;
@@ -132,8 +131,7 @@ export function useAuth() {
           attemptRefresh();
         }
       } catch (e) {
-        console.warn('[Auth] Token decode error, attempting refresh:', (e as Error).message);
-        attemptRefresh();
+          attemptRefresh();
       }
     };
 
@@ -145,15 +143,12 @@ export function useAuth() {
   const login = useCallback(async (email: string, password: string) => {
     setLoading(true); setError(null);
     try {
-      console.log("Attempting login to:", `${BASE_URL}/api/auth/login`);
       const res = await fetch(`${BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      console.log("Login response status:", res.status);
       const json: AuthResponse = await res.json();
-      console.log("Login response data:", json);
       if (!json.ok || !json.data) {
         throw new Error(json.error?.message || "Login failed");
       }
@@ -163,7 +158,6 @@ export function useAuth() {
       setLoading(false);
       return json.data;
     } catch (e: any) {
-      console.error("Login error:", e);
       setError(e.message);
       setLoading(false);
       throw e;

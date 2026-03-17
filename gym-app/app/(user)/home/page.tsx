@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Card, CardHeader, CardBody } from "@/components/ui/Card";
+import { Card, CardBody } from "@/components/ui/Card";
 import Link from "next/link";
 import { useAuth } from "@/hooks/useAuth";
 import { useWorkoutPlans } from "@/hooks/useWorkoutPlan";
 import { useDietPlan } from "@/hooks/useDietPlan";
+import { StatCardSkeleton } from "@/components/ui/Skeleton";
 
 export default function UserDashboard() {
   const { user } = useAuth();
-  const { plans: workoutPlans } = useWorkoutPlans();
-  const { plans: dietPlans } = useDietPlan();
+  const { plans: workoutPlans, loading: workoutLoading } = useWorkoutPlans();
+  const { plans: dietPlans, loading: dietLoading } = useDietPlan();
+  const statsLoading = workoutLoading || dietLoading;
   
   const [todayWorkout, setTodayWorkout] = useState<any>(null);
   const [todayDiet, setTodayDiet] = useState<any>(null);
@@ -78,10 +80,21 @@ export default function UserDashboard() {
 
       {/* Quick Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Plans" value={`${workoutPlans.length}`} icon="🏋️" />
-        <StatCard label="Diet Plans" value={`${dietPlans.length}`} icon="🍎" />
-        <StatCard label="Calories" value={todayDiet?.dailyCalories ? `${todayDiet.dailyCalories}` : '-'} icon="🔥" />
-        <StatCard label="Weight" value={user?.profile?.weight ? `${user.profile.weight} kg` : '-'} icon="⚖️" />
+        {statsLoading ? (
+          <>
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+            <StatCardSkeleton />
+          </>
+        ) : (
+          <>
+            <StatCard label="Plans" value={`${workoutPlans.length}`} icon="🏋️" />
+            <StatCard label="Diet Plans" value={`${dietPlans.length}`} icon="🍎" />
+            <StatCard label="Calories" value={todayDiet?.dailyCalories ? `${todayDiet.dailyCalories}` : '-'} icon="🔥" />
+            <StatCard label="Weight" value={user?.profile?.weight ? `${user.profile.weight} kg` : '-'} icon="⚖️" />
+          </>
+        )}
       </div>
 
       {/* Today's Overview - Redirect Cards */}
@@ -244,14 +257,12 @@ export default function UserDashboard() {
 
 function StatCard({ label, value, icon }: { label: string; value: string; icon: string }) {
   return (
-    <Card>
-      <CardBody>
-        <div className="text-center">
-          <div className="text-3xl mb-2">{icon}</div>
-          <div className="text-2xl font-bold text-gray-900">{value}</div>
-          <div className="text-xs text-gray-500 uppercase tracking-wide">{label}</div>
-        </div>
-      </CardBody>
-    </Card>
+    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-md transition-shadow">
+      <div className="text-center">
+        <div className="text-2xl mb-2">{icon}</div>
+        <div className="text-xl font-bold text-gray-900">{value}</div>
+        <div className="text-xs text-gray-500 uppercase tracking-wide mt-0.5">{label}</div>
+      </div>
+    </div>
   );
 }

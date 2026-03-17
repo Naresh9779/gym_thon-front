@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Navigation from '@/components/shared/Navigation';
+import SubscriptionExpired from '@/components/user/SubscriptionExpired';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function UserLayout({ children }: { children: React.ReactNode }) {
@@ -36,13 +37,19 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
     return null;
   }
 
+  const isExpired = user?.subscription?.status === 'expired';
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Navigation />
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {children}
+        {isExpired ? (
+          <SubscriptionExpired endDate={user?.subscription?.endDate} />
+        ) : (
+          children
+        )}
       </main>
     </div>
   );

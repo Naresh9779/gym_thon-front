@@ -6,50 +6,18 @@ import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import MealCard from '@/components/user/MealCard';
 import { useWorkoutPlans } from '@/hooks/useWorkoutPlan';
 import { useDietPlan } from '@/hooks/useDietPlan';
+import { useToast } from '@/hooks/useToast';
 
 export default function PlansPage() {
   const [activeTab, setActiveTab] = useState<'workout' | 'diet'>('workout');
   const { plans: workoutPlans, loading: workoutLoading } = useWorkoutPlans();
   const { plans: dietPlans, loading: dietLoading } = useDietPlan();
+  const toast = useToast();
 
   const latestWorkout = workoutPlans[0];
   const latestDiet = dietPlans[0];
 
-  const meals = latestDiet?.meals || [
-    {
-      name: 'Breakfast',
-      time: '7:30 AM',
-      calories: 689,
-      foods: [
-        { name: 'Oatmeal', portion: '1 cup' },
-        { name: 'Banana', portion: '1 medium' },
-        { name: 'Protein Shake', portion: '1 scoop' }
-      ],
-      macros: { protein: 35, carbs: 85, fats: 15 }
-    },
-    {
-      name: 'Lunch',
-      time: '12:30 PM',
-      calories: 750,
-      foods: [
-        { name: 'Grilled Chicken', portion: '200g' },
-        { name: 'Brown Rice', portion: '1 cup' },
-        { name: 'Mixed Vegetables', portion: '1.5 cups' }
-      ],
-      macros: { protein: 50, carbs: 70, fats: 18 }
-    },
-    {
-      name: 'Dinner',
-      time: '7:00 PM',
-      calories: 680,
-      foods: [
-        { name: 'Salmon', portion: '180g' },
-        { name: 'Sweet Potato', portion: '1 medium' },
-        { name: 'Broccoli', portion: '1 cup' }
-      ],
-      macros: { protein: 45, carbs: 65, fats: 20 }
-    }
-  ];
+  const meals = latestDiet?.meals || [];
 
   return (
     <div className="space-y-6">
@@ -220,7 +188,7 @@ export default function PlansPage() {
                     calories={meal.calories}
                     foods={meal.foods || []}
                     macros={meal.macros || { protein: 0, carbs: 0, fats: 0 }}
-                    onLog={() => alert(`Logged ${meal.name}`)}
+                    onLog={() => toast.success(`${meal.name} logged!`)}
                   />
                 ))}
               </div>

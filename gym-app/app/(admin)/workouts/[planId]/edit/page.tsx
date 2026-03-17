@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState, use } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
@@ -37,7 +38,8 @@ interface WorkoutPlan {
 
 export default function AdminEditWorkoutPage({ params }: Props) {
   const { planId } = use(params);
-  const { accessToken } = useAuth();
+  const router = useRouter();
+  const { getAccessToken } = useAuth();
   const toast = useToast();
   const [plan, setPlan] = useState<WorkoutPlan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -54,7 +56,7 @@ export default function AdminEditWorkoutPage({ params }: Props) {
   useEffect(() => {
     const run = async () => {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/workouts/${planId}`,{ headers: { Authorization: `Bearer ${token}` } });
         const j = await res.json();
         if (!j.ok) throw new Error(j.error?.message || 'Failed to fetch plan');
@@ -83,7 +85,7 @@ export default function AdminEditWorkoutPage({ params }: Props) {
     if (status) body.status = status;
     if (days.length > 0) body.days = days;
 
-    const token = accessToken();
+    const token = getAccessToken();
     const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/workouts/${planId}`,{
       method: 'PATCH',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -93,7 +95,7 @@ export default function AdminEditWorkoutPage({ params }: Props) {
     setSaving(false);
     if (j.ok) {
       toast.success('Workout plan updated');
-      window.location.href = `/users/${j.data.workoutPlan.userId}`;
+      router.push(`/users/${j.data.workoutPlan.userId}`);
     } else {
       toast.error(j.error?.message || 'Failed to update plan');
     }

@@ -1,6 +1,7 @@
 "use client";
 import { use, useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
@@ -42,7 +43,8 @@ interface DietPlan {
 
 export default function AdminEditDietPage({ params }: Props) {
   const { planId } = use(params);
-  const { accessToken } = useAuth();
+  const router = useRouter();
+  const { getAccessToken } = useAuth();
   const toast = useToast();
   const [plan, setPlan] = useState<DietPlan | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,7 +63,7 @@ export default function AdminEditDietPage({ params }: Props) {
   useEffect(() => {
     const run = async () => {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${planId}`,{ headers: { Authorization: `Bearer ${token}` } });
         const j = await res.json();
         if (!j.ok) throw new Error(j.error?.message || 'Failed to fetch plan');
@@ -96,7 +98,7 @@ export default function AdminEditDietPage({ params }: Props) {
     if (Object.keys(macros).length) body.macros = macros;
     if (meals.length > 0) body.meals = meals;
 
-    const token = accessToken();
+    const token = getAccessToken();
     const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${planId}`,{
       method: 'PATCH',
       headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -106,7 +108,7 @@ export default function AdminEditDietPage({ params }: Props) {
     setSaving(false);
     if (j.ok) {
       toast.success('Diet plan updated');
-      window.location.href = `/users/${j.data.dietPlan.userId}`;
+      router.push(`/users/${j.data.dietPlan.userId}`);
     } else {
       toast.error(j.error?.message || 'Failed to update plan');
     }

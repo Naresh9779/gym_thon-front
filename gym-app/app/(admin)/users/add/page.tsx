@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/useToast';
 import { Card, CardHeader, CardBody } from '@/components/ui/Card';
 import {
@@ -16,6 +17,7 @@ import {
 } from '@heroicons/react/24/outline';
 
 export default function AddUserPage() {
+  const router = useRouter();
   const toast = useToast();
   const [formData, setFormData] = useState({
     name: '',
@@ -92,10 +94,8 @@ export default function AddUserPage() {
       }
 
       toast.success(`User ${formData.name} added successfully!`);
-      // Redirect back to users list
-      window.location.href = '/users';
-    } catch (err: any) {
-      console.error('Create user failed', err);
+      router.push('/users');
+    } catch {
       setError('Failed to create user');
     }
   };
