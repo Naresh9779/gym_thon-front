@@ -15,12 +15,12 @@ export default function AnalyticsPage() {
   const [trends, setTrends] = useState<Array<{ date: string; workouts: number; meals: number; activeUsers: number }>>([]);
   const [userMetrics, setUserMetrics] = useState<any>(null);
   const [userTrends, setUserTrends] = useState<Array<{ date: string; workouts: number; meals: number; active: number }>>([]);
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
 
   useEffect(() => {
     async function bootstrap() {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         // Load users for selector
         const resUsers = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
           headers: { Authorization: `Bearer ${token}` }
@@ -42,7 +42,7 @@ export default function AnalyticsPage() {
       }
     }
     bootstrap();
-  }, [accessToken]);
+  }, [getAccessToken]);
 
   const user = users.find(u => String(u._id) === selectedId);
 
@@ -56,7 +56,7 @@ export default function AnalyticsPage() {
       }
       try {
         setLoading(true);
-        const token = accessToken();
+        const token = getAccessToken();
         const [resMetrics, resTrends] = await Promise.all([
           fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/analytics/user/${user._id}`, {
             headers: { Authorization: `Bearer ${token}` }
@@ -87,7 +87,7 @@ export default function AnalyticsPage() {
       }
     }
     loadUserMetrics();
-  }, [user, accessToken]);
+  }, [user, getAccessToken]);
 
   return (
     <div className="space-y-5">

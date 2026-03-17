@@ -1,110 +1,196 @@
 "use client";
+import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
+import { Zap, BarChart3, Clock, ChevronRight, Dumbbell, Salad, Brain } from "lucide-react";
+
+const fadeUp = {
+  hidden: { opacity: 0, y: 30 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.5, type: "tween" as const } },
+};
 
 export default function Home() {
   const router = useRouter();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-white">
+    <div className="min-h-screen bg-[#f8faf9] overflow-x-hidden">
       {/* Header */}
-      <header className="p-6 flex items-center justify-between max-w-7xl mx-auto">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-green-500 rounded-2xl flex items-center justify-center">
-            <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-            </svg>
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-emerald-600 rounded-lg flex items-center justify-center shadow-sm">
+              <Zap className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-lg font-bold text-gray-900">FitFlow</span>
           </div>
-          <span className="text-2xl font-bold text-gray-900">FitFlow</span>
+          <button
+            onClick={() => router.push("/auth")}
+            className="flex items-center gap-1.5 px-4 py-2 text-sm font-semibold text-green-600 hover:text-green-700 hover:bg-green-50 rounded-xl transition-all"
+          >
+            Sign In <ChevronRight className="w-4 h-4" />
+          </button>
         </div>
-        <Button onClick={() => router.push("/auth")} variant="ghost">
-          Sign In
-        </Button>
       </header>
 
-      {/* Hero Section */}
-      <main className="max-w-7xl mx-auto px-6 py-16 text-center">
-        <h1 className="text-5xl md:text-6xl font-bold text-gray-900 mb-6 leading-tight">
-          AI-Powered<br />
-          Fitness Training<br />
-          Platform
-        </h1>
-        
-        <p className="text-lg text-gray-600 max-w-2xl mx-auto mb-12">
-          Generate personalized workout and diet plans instantly. Track progress 
-          and achieve your fitness goals with intelligent automation.
-        </p>
-
-        {/* CTA Cards */}
-        <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
-          <button
-            onClick={() => router.push("/auth?role=trainer")}
-            className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all hover:scale-105 text-left group"
+      {/* Hero */}
+      <section className="max-w-6xl mx-auto px-6 pt-20 pb-16 text-center">
+        <motion.div
+          initial="hidden"
+          animate="show"
+          variants={{ show: { transition: { staggerChildren: 0.1 } } }}
+        >
+          <motion.div
+            variants={fadeUp}
+            className="inline-flex items-center gap-2 px-4 py-1.5 bg-green-50 border border-green-200 rounded-full text-sm font-medium text-green-700 mb-6"
           >
-            <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-green-500 transition-colors">
-              <svg className="w-10 h-10 text-green-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">I'm a Trainer</h2>
-            <p className="text-gray-600">
-              Manage clients and create AI-powered training programs
-            </p>
-          </button>
+            <Brain className="w-4 h-4" />
+            AI-Powered Fitness Platform
+          </motion.div>
 
-          <button
-            onClick={() => router.push("/auth?role=user")}
-            className="bg-white rounded-2xl p-8 shadow-lg hover:shadow-xl transition-all hover:scale-105 text-left group"
+          <motion.h1
+            variants={fadeUp}
+            className="text-5xl md:text-7xl font-extrabold text-gray-900 mb-6 leading-[1.05] tracking-tight"
           >
-            <div className="w-16 h-16 bg-green-100 rounded-2xl flex items-center justify-center mb-4 group-hover:bg-green-500 transition-colors">
-              <svg className="w-10 h-10 text-green-600 group-hover:text-white transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-              </svg>
-            </div>
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">I'm a User</h2>
-            <p className="text-gray-600">
-              Get personalized plans and track your fitness journey
-            </p>
-          </button>
-        </div>
+            Train Smarter,<br />
+            <span className="bg-gradient-to-r from-green-500 to-emerald-400 bg-clip-text text-transparent">
+              Not Harder
+            </span>
+          </motion.h1>
 
-        {/* Features */}
-        <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto mt-20">
-          <div className="text-center">
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">AI-Generated Plans</h3>
-            <p className="text-sm text-gray-600">Personalized workouts and nutrition based on your goals</p>
-          </div>
-          
-          <div className="text-center">
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-              </svg>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Progress Tracking</h3>
-            <p className="text-sm text-gray-600">Monitor your performance and see real results</p>
-          </div>
-          
-          <div className="text-center">
-            <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-              <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </div>
-            <h3 className="font-semibold text-gray-900 mb-2">Smart Automation</h3>
-            <p className="text-sm text-gray-600">Daily plans generated automatically for consistency</p>
-          </div>
+          <motion.p
+            variants={fadeUp}
+            className="text-lg text-gray-500 max-w-xl mx-auto mb-10 leading-relaxed"
+          >
+            Generate personalized workout and nutrition plans instantly with AI.
+            Track progress and hit your goals faster.
+          </motion.p>
+
+          {/* Role CTA Cards */}
+          <motion.div
+            variants={fadeUp}
+            className="grid md:grid-cols-2 gap-4 max-w-2xl mx-auto"
+          >
+            {[
+              {
+                role: "trainer",
+                icon: <Dumbbell className="w-7 h-7" />,
+                title: "I'm a Trainer",
+                desc: "Manage clients, generate AI plans, track progress",
+                from: "from-green-500",
+                to: "to-emerald-600",
+                light: "bg-green-50 text-green-600",
+              },
+              {
+                role: "user",
+                icon: <Salad className="w-7 h-7" />,
+                title: "I'm an Athlete",
+                desc: "Get personalized plans and track your journey",
+                from: "from-blue-500",
+                to: "to-indigo-600",
+                light: "bg-blue-50 text-blue-600",
+              },
+            ].map((item) => (
+              <motion.button
+                key={item.role}
+                whileHover={{ scale: 1.02, y: -2 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => router.push(`/auth?role=${item.role}`)}
+                className="group relative bg-white rounded-2xl p-6 shadow-sm border border-gray-100 hover:shadow-lg hover:border-gray-200 transition-all text-left overflow-hidden"
+              >
+                <div className={`absolute inset-0 bg-gradient-to-br ${item.from} ${item.to} opacity-0 group-hover:opacity-5 transition-opacity`} />
+                <div className={`w-12 h-12 rounded-xl ${item.light} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}>
+                  {item.icon}
+                </div>
+                <h2 className="text-xl font-bold text-gray-900 mb-1">{item.title}</h2>
+                <p className="text-sm text-gray-500">{item.desc}</p>
+                <ChevronRight className="absolute right-5 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-300 group-hover:text-gray-500 group-hover:translate-x-1 transition-all" />
+              </motion.button>
+            ))}
+          </motion.div>
+        </motion.div>
+      </section>
+
+      {/* Stats Bar */}
+      <motion.section
+        initial={{ opacity: 0 }}
+        whileInView={{ opacity: 1 }}
+        viewport={{ once: true }}
+        className="border-y border-gray-100 bg-white py-10"
+      >
+        <div className="max-w-4xl mx-auto px-6 grid grid-cols-3 gap-8 text-center">
+          {[
+            { value: "10K+", label: "Workouts Generated" },
+            { value: "98%", label: "Satisfaction Rate" },
+            { value: "3x", label: "Faster Results" },
+          ].map((stat, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.1 }}
+            >
+              <div className="text-3xl font-extrabold bg-gradient-to-r from-green-500 to-emerald-400 bg-clip-text text-transparent">
+                {stat.value}
+              </div>
+              <div className="text-sm text-gray-500 mt-1">{stat.label}</div>
+            </motion.div>
+          ))}
         </div>
-      </main>
+      </motion.section>
+
+      {/* Features */}
+      <section className="max-w-6xl mx-auto px-6 py-20">
+        <motion.h2
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          className="text-3xl font-bold text-center text-gray-900 mb-12"
+        >
+          Everything you need to succeed
+        </motion.h2>
+        <div className="grid md:grid-cols-3 gap-6">
+          {[
+            {
+              icon: <Brain className="w-6 h-6" />,
+              color: "bg-purple-50 text-purple-600",
+              title: "AI Plan Generation",
+              desc: "Personalized workouts and nutrition plans built around your goals, body type, and schedule.",
+            },
+            {
+              icon: <BarChart3 className="w-6 h-6" />,
+              color: "bg-blue-50 text-blue-600",
+              title: "Progress Tracking",
+              desc: "Visual dashboards, streaks, and trend charts to keep you motivated and on track.",
+            },
+            {
+              icon: <Clock className="w-6 h-6" />,
+              color: "bg-amber-50 text-amber-600",
+              title: "Smart Automation",
+              desc: "Daily plans generated automatically. Never wonder what to eat or train again.",
+            },
+          ].map((f, i) => (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: i * 0.1 }}
+              whileHover={{ y: -4 }}
+              className="bg-white rounded-2xl p-6 border border-gray-100 shadow-sm hover:shadow-md transition-all"
+            >
+              <div className={`w-11 h-11 rounded-xl ${f.color} flex items-center justify-center mb-4`}>
+                {f.icon}
+              </div>
+              <h3 className="font-bold text-gray-900 mb-2">{f.title}</h3>
+              <p className="text-sm text-gray-500 leading-relaxed">{f.desc}</p>
+            </motion.div>
+          ))}
+        </div>
+      </section>
 
       {/* Footer */}
-      <footer className="text-center py-8 text-gray-500 text-sm">
-        <p>© 2025 FitFlow. Powered by AI.</p>
+      <footer className="border-t border-gray-100 py-8 text-center text-sm text-gray-400">
+        © 2026 FitFlow. Powered by AI.
       </footer>
     </div>
   );

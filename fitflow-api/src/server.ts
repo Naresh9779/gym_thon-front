@@ -8,11 +8,13 @@ import { planSchedulerService } from './services/planSchedulerService';
 
 async function ensureAdmin() {
   const existing = await User.findOne({ role: 'admin' });
+  const passwordHash = await hashPassword(ENV.ADMIN_PASSWORD);
   if (existing) {
-    console.log('✓ Admin exists:', existing.email);
+    // Always sync password and email from .env so config changes take effect on restart
+    await User.updateOne({ _id: existing._id }, { passwordHash, email: ENV.ADMIN_EMAIL, name: ENV.ADMIN_NAME });
+    console.log('✓ Admin synced:', ENV.ADMIN_EMAIL);
     return;
   }
-  const passwordHash = await hashPassword(ENV.ADMIN_PASSWORD);
   const admin = await User.create({
     email: ENV.ADMIN_EMAIL,
     passwordHash,

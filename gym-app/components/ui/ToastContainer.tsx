@@ -1,91 +1,61 @@
 "use client";
 
+import { AnimatePresence, motion } from 'framer-motion';
 import { useToastStore } from '@/hooks/useToast';
-import { useEffect, useState } from 'react';
+import { CheckCircle2, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 
 export default function ToastContainer() {
   const { toasts, removeToast } = useToastStore();
 
   return (
-    <div className="fixed top-4 right-4 z-50 flex flex-col gap-2 max-w-sm">
-      {toasts.map((toast) => (
-        <Toast
-          key={toast.id}
-          id={toast.id}
-          message={toast.message}
-          type={toast.type}
-          onClose={() => removeToast(toast.id)}
-        />
-      ))}
+    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 max-w-sm w-full pointer-events-none">
+      <AnimatePresence mode="sync">
+        {toasts.map((toast) => (
+          <Toast
+            key={toast.id}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => removeToast(toast.id)}
+          />
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
 
 interface ToastProps {
-  id: string;
   message: string;
   type: 'success' | 'error' | 'info' | 'warning';
   onClose: () => void;
 }
 
+const configs = {
+  success: { icon: CheckCircle2, bg: 'bg-green-500', ring: 'ring-green-400' },
+  error:   { icon: XCircle,      bg: 'bg-red-500',   ring: 'ring-red-400' },
+  info:    { icon: Info,         bg: 'bg-blue-500',  ring: 'ring-blue-400' },
+  warning: { icon: AlertTriangle, bg: 'bg-amber-500', ring: 'ring-amber-400' },
+} as const;
+
 function Toast({ message, type, onClose }: ToastProps) {
-  const [isExiting, setIsExiting] = useState(false);
-
-  const handleClose = () => {
-    setIsExiting(true);
-    setTimeout(onClose, 300); // Match animation duration
-  };
-
-  const bgColor = {
-    success: 'bg-green-500',
-    error: 'bg-red-500',
-    info: 'bg-blue-500',
-    warning: 'bg-yellow-500',
-  }[type];
-
-  const icon = {
-    success: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-      </svg>
-    ),
-    error: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-      </svg>
-    ),
-    info: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-      </svg>
-    ),
-    warning: (
-      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-      </svg>
-    ),
-  }[type];
+  const { icon: Icon, bg, ring } = configs[type];
 
   return (
-    <div
-      className={`
-        ${bgColor} text-white px-4 py-3 rounded-lg shadow-lg
-        flex items-center gap-3 min-w-[320px]
-        transition-all duration-300 ease-in-out
-        ${isExiting ? 'translate-x-full opacity-0' : 'translate-x-0 opacity-100'}
-        animate-slide-in
-      `}
+    <motion.div
+      initial={{ opacity: 0, x: 60, scale: 0.95 }}
+      animate={{ opacity: 1, x: 0, scale: 1 }}
+      exit={{ opacity: 0, x: 60, scale: 0.95 }}
+      transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+      className={`pointer-events-auto ${bg} ring-1 ${ring} text-white px-4 py-3 rounded-xl shadow-xl flex items-center gap-3 min-w-[280px]`}
     >
-      <div className="flex-shrink-0">{icon}</div>
-      <p className="flex-1 text-sm font-medium">{message}</p>
+      <Icon className="w-5 h-5 flex-shrink-0" />
+      <p className="flex-1 text-sm font-medium leading-snug">{message}</p>
       <button
-        onClick={handleClose}
-        className="flex-shrink-0 hover:bg-white/20 rounded p-1 transition-colors"
+        onClick={onClose}
+        className="flex-shrink-0 hover:bg-white/20 rounded-lg p-1 transition-colors"
+        aria-label="Dismiss"
       >
-        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <X className="w-4 h-4" />
       </button>
-    </div>
+    </motion.div>
   );
 }

@@ -55,7 +55,7 @@ interface DietPlan {
 
 export default function AdminUserDetail({ params }: Props) {
   const { id } = use(params);
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
   const toast = useToast();
   const [user, setUser] = useState<UserData | null>(null);
   const [workoutPlans, setWorkoutPlans] = useState<WorkoutPlan[]>([]);
@@ -71,7 +71,7 @@ export default function AdminUserDetail({ params }: Props) {
   useEffect(() => {
     async function fetchUserData() {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         
         // Fetch user profile
         const userRes = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
@@ -113,11 +113,11 @@ export default function AdminUserDetail({ params }: Props) {
     }
     
     fetchUserData();
-  }, [id, accessToken]);
+  }, [id, getAccessToken]);
 
   const handleStatsUpdate = async (stats: { age?: number; weight?: number; height?: number }) => {
     try {
-      const token = accessToken();
+      const token = getAccessToken();
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${id}/profile`, {
         method: 'PATCH',
         headers: {
@@ -145,7 +145,7 @@ export default function AdminUserDetail({ params }: Props) {
 
   const handleSubscriptionUpdate = async () => {
     try {
-      const token = accessToken();
+      const token = getAccessToken();
       const payload: any = {};
       
       if (subscriptionAction === 'extend') {
@@ -320,7 +320,7 @@ export default function AdminUserDetail({ params }: Props) {
                         onClick={async () => {
                           if (!confirm(`Delete workout plan "${plan.name}"?`)) return;
                           try {
-                            const token = accessToken();
+                            const token = getAccessToken();
                             const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/workouts/${plan._id}`, {
                               method: 'DELETE',
                               headers: { 'Authorization': `Bearer ${token}` }
@@ -396,7 +396,7 @@ export default function AdminUserDetail({ params }: Props) {
                         onClick={async () => {
                           if (!confirm(`Delete diet plan "${plan.name}"?`)) return;
                           try {
-                            const token = accessToken();
+                            const token = getAccessToken();
                             const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${plan._id}`, {
                               method: 'DELETE',
                               headers: { 'Authorization': `Bearer ${token}` }

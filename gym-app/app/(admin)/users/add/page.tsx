@@ -15,10 +15,12 @@ import {
   FlagIcon,
   BoltIcon,
 } from '@heroicons/react/24/outline';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function AddUserPage() {
   const router = useRouter();
   const toast = useToast();
+  const { getAccessToken } = useAuth();
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -77,8 +79,7 @@ export default function AddUserPage() {
         },
       };
 
-      // Auth token from storage
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const token = getAccessToken();
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
         method: 'POST',
         headers: {

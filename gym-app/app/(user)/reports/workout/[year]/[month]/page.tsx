@@ -22,7 +22,7 @@ interface WorkoutReport {
 
 export default function MonthlyWorkoutReportPage({ params }: Props) {
   const { year, month } = use(params);
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
   const [report, setReport] = useState<WorkoutReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -30,7 +30,7 @@ export default function MonthlyWorkoutReportPage({ params }: Props) {
   useEffect(() => {
     const fetchReport = async () => {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/reports/workout/monthly/${year}/${month}`,
           { headers: { Authorization: `Bearer ${token}` } }
@@ -50,7 +50,7 @@ export default function MonthlyWorkoutReportPage({ params }: Props) {
     };
 
     fetchReport();
-  }, [year, month, accessToken]);
+  }, [year, month, getAccessToken]);
 
   const monthName = new Date(parseInt(year), parseInt(month) - 1, 1).toLocaleDateString('en-US', { 
     month: 'long', 

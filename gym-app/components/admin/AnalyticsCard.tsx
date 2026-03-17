@@ -1,46 +1,49 @@
-import React from 'react'
-import { Card, CardHeader, CardBody } from '@/components/ui/Card'
+"use client";
+
+import React from 'react';
+import { motion } from 'framer-motion';
 
 type Accent = 'green' | 'blue' | 'purple' | 'amber' | 'rose' | 'gray';
 
 interface Props {
-  title: string
-  value: string | number
-  subtitle?: string
-  Icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>
-  accent?: Accent
-  showTrend?: boolean
+  title: string;
+  value: string | number;
+  subtitle?: string;
+  accent?: Accent;
+  loading?: boolean;
+  Icon?: React.ComponentType<{ className?: string }>;
 }
 
-export default function AnalyticsCard({ title, value, subtitle, Icon, accent = 'gray', showTrend = false }: Props) {
-  const accentClasses: Record<Accent, { ring: string; bg: string; icon: string }> = {
-    green:  { ring: 'ring-green-100',  bg: 'bg-green-50',  icon: 'text-green-600' },
-    blue:   { ring: 'ring-blue-100',   bg: 'bg-blue-50',   icon: 'text-blue-600' },
-    purple: { ring: 'ring-purple-100', bg: 'bg-purple-50', icon: 'text-purple-600' },
-    amber:  { ring: 'ring-amber-100',  bg: 'bg-amber-50',  icon: 'text-amber-600' },
-    rose:   { ring: 'ring-rose-100',   bg: 'bg-rose-50',   icon: 'text-rose-600' },
-    gray:   { ring: 'ring-gray-100',   bg: 'bg-gray-50',   icon: 'text-gray-600' },
-  };
-  const a = accentClasses[accent];
+const accents: Record<Accent, { value: string; label: string; bar: string; bg: string }> = {
+  green:  { value: 'text-green-600',  label: 'text-green-500',  bar: 'bg-green-400',  bg: 'bg-green-50' },
+  blue:   { value: 'text-blue-600',   label: 'text-blue-500',   bar: 'bg-blue-400',   bg: 'bg-blue-50' },
+  purple: { value: 'text-purple-600', label: 'text-purple-500', bar: 'bg-purple-400', bg: 'bg-purple-50' },
+  amber:  { value: 'text-amber-600',  label: 'text-amber-500',  bar: 'bg-amber-400',  bg: 'bg-amber-50' },
+  rose:   { value: 'text-rose-600',   label: 'text-rose-500',   bar: 'bg-rose-400',   bg: 'bg-rose-50' },
+  gray:   { value: 'text-gray-600',   label: 'text-gray-500',   bar: 'bg-gray-400',   bg: 'bg-gray-50' },
+};
+
+export default function AnalyticsCard({ title, value, subtitle, accent = 'gray', loading = false }: Props) {
+  const a = accents[accent];
 
   return (
-    <Card>
-      <CardHeader title={title} subtitle={subtitle} />
-      <CardBody>
-        <div className="flex items-center justify-between">
-          <div className="text-3xl font-bold">{value}</div>
-          <div className="flex items-center gap-2">
-            {showTrend && (
-              <div className={`hidden sm:block text-sm text-gray-500`}>(trend)</div>
-            )}
-            {Icon && (
-              <div className={`inline-flex items-center justify-center w-10 h-10 rounded-full ${a.bg} ring-8 ${a.ring}`}>
-                <Icon className={`w-5 h-5 ${a.icon}`} />
-              </div>
-            )}
-          </div>
+    <motion.div
+      variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}
+      className={`rounded-2xl border border-gray-100 p-5 shadow-sm ${a.bg}`}
+    >
+      {loading ? (
+        <div className="space-y-2 animate-pulse">
+          <div className="h-3 bg-white/60 rounded w-20" />
+          <div className="h-8 bg-white/60 rounded-lg w-14 mt-3" />
+          <div className="h-2 bg-white/40 rounded w-16 mt-1" />
         </div>
-      </CardBody>
-    </Card>
-  )
+      ) : (
+        <>
+          <p className={`text-xs font-semibold uppercase tracking-wide ${a.label} mb-2`}>{title}</p>
+          <p className={`text-3xl font-extrabold tabular-nums ${a.value}`}>{value}</p>
+          {subtitle && <p className="text-xs text-gray-400 mt-1">{subtitle}</p>}
+        </>
+      )}
+    </motion.div>
+  );
 }

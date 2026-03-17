@@ -83,7 +83,7 @@ export default function AdminEditDietPage({ params }: Props) {
       }
     };
     run();
-  }, [planId, accessToken]);
+  }, [planId, getAccessToken]);
 
   const save = async () => {
     setSaving(true);

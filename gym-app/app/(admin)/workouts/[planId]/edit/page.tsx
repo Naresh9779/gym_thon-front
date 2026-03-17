@@ -74,7 +74,7 @@ export default function AdminEditWorkoutPage({ params }: Props) {
       }
     };
     run();
-  }, [planId, accessToken]);
+  }, [planId, getAccessToken]);
 
   const save = async () => {
     setSaving(true);

@@ -33,13 +33,13 @@ export default function AdminGenerateDiet() {
     preferences: '',
   });
 
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
   const toast = useToast();
 
   useEffect(() => {
     async function fetchUsers() {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -50,7 +50,7 @@ export default function AdminGenerateDiet() {
       }
     }
     fetchUsers();
-  }, [accessToken]);
+  }, [getAccessToken]);
 
   const selectedUser = users.find(u => u._id === selectedUserId);
 
@@ -68,7 +68,7 @@ export default function AdminGenerateDiet() {
     
     setIsGenerating(true);
     try {
-      const token = accessToken();
+      const token = getAccessToken();
       // Generate diet plan for today for the selected user
       const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users/${selectedUserId}/generate-diet-daily`, {
         method: 'POST',

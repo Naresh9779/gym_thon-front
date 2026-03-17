@@ -29,13 +29,13 @@ export default function AdminGenerateWorkout() {
     preferences: '',
   });
 
-  const { accessToken } = useAuth();
+  const { getAccessToken } = useAuth();
   const toast = useToast();
 
   useEffect(() => {
     async function fetchUsers() {
       try {
-        const token = accessToken();
+        const token = getAccessToken();
         const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
           headers: { Authorization: `Bearer ${token}` },
         });
@@ -46,7 +46,7 @@ export default function AdminGenerateWorkout() {
       }
     }
     fetchUsers();
-  }, [accessToken]);
+  }, [getAccessToken]);
 
   const selectedUser = users.find(u => u._id === selectedUserId);
 
@@ -64,7 +64,7 @@ export default function AdminGenerateWorkout() {
     
     setIsGenerating(true);
     try {
-      const token = accessToken();
+      const token = getAccessToken();
       const today = new Date();
       const yyyy = today.getFullYear();
       const mm = String(today.getMonth() + 1).padStart(2, '0');
