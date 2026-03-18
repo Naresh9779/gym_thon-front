@@ -5,17 +5,16 @@ import { connectDB } from '../config/db';
 const router = Router();
 
 function verifyCronRequest(req: any, res: any, next: any) {
-  const secret = req.query.secret || req.headers['x-cron-secret'];
-  const expectedSecret = process.env.CRON_SECRET;
-
   if (process.env.NODE_ENV !== 'production') return next();
 
-  if (!expectedSecret) {
-    return res.status(500).json({ ok: false, error: 'Server misconfiguration' });
-  }
-  if (secret !== expectedSecret) {
-    return res.status(401).json({ ok: false, error: 'Unauthorized' });
-  }
+  const expectedSecret = process.env.CRON_SECRET;
+  if (!expectedSecret) return res.status(500).json({ ok: false, error: 'Server misconfiguration' });
+
+  // Vercel sends: Authorization: Bearer <CRON_SECRET>
+  const authHeader = req.headers['authorization'] || '';
+  const secret = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : (req.query.secret || req.headers['x-cron-secret']);
+
+  if (secret !== expectedSecret) return res.status(401).json({ ok: false, error: 'Unauthorized' });
   next();
 }
 
@@ -23,7 +22,7 @@ function verifyCronRequest(req: any, res: any, next: any) {
  * POST /api/cron/subscription-update
  * Runs daily at 1 AM — auto-expires subscriptions past their endDate
  */
-router.post('/subscription-update', verifyCronRequest, async (_req, res) => {
+router.get('/subscription-update', verifyCronRequest, async (_req, res) => {
   try {
     await connectDB();
     await planSchedulerService.triggerSubscriptionUpdate();
@@ -37,7 +36,7 @@ router.post('/subscription-update', verifyCronRequest, async (_req, res) => {
  * POST /api/cron/workout-expiry
  * Runs daily at 2 AM — marks expired workout plans as completed (housekeeping)
  */
-router.post('/workout-expiry', verifyCronRequest, async (_req, res) => {
+router.get('/workout-expiry', verifyCronRequest, async (_req, res) => {
   try {
     await connectDB();
     await planSchedulerService.triggerWorkoutExpiryMark();
