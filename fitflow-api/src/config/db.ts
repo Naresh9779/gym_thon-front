@@ -29,7 +29,7 @@ export async function connectDB() {
       // bufferTimeoutMS controls how long Mongoose will buffer operations
       bufferTimeoutMS: 15000,
     };
-    cache.promise = mongoose.connect(ENV.MONGODB_URI, opts).then((m) => m);
+    cache.promise = mongoose.connect(ENV.MONGODB_URI, opts);
   }
 
   cache.conn = await cache.promise;

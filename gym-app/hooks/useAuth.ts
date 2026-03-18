@@ -15,9 +15,15 @@ type User = {
     gender?: string;
     goals?: string[];
     activityLevel?: string;
+    experienceLevel?: string;
     preferences?: string[];
     restrictions?: string[];
     timezone?: string;
+    dietPreferences?: {
+      isVegetarian?: boolean;
+      dietType?: string;
+      weeklyBudget?: number;
+    };
   };
   subscription?: {
     plan?: string;

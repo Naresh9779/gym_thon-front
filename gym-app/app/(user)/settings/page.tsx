@@ -1,11 +1,23 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import Select from '@/components/ui/Select';
-import { Card, CardHeader, CardBody } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
+import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
+import { Loader2 } from 'lucide-react';
+
+const UNIT_OPTIONS = [
+  { value: 'metric',   label: 'Metric',   sub: 'kg, cm' },
+  { value: 'imperial', label: 'Imperial', sub: 'lb, in' },
+];
+
+const TZ_OPTIONS = [
+  { value: 'UTC',                  label: 'UTC' },
+  { value: 'America/New_York',     label: 'Eastern (ET)' },
+  { value: 'America/Chicago',      label: 'Central (CT)' },
+  { value: 'America/Denver',       label: 'Mountain (MT)' },
+  { value: 'America/Los_Angeles',  label: 'Pacific (PT)' },
+];
 
 export default function SettingsPage() {
   const { user, refreshUser, getAccessToken } = useAuth();
@@ -17,101 +29,145 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (user?.profile) {
-      // Check if user has 'imperial' in preferences
-      const hasImperial = user.profile.preferences?.includes('imperial');
-      setUnits(hasImperial ? 'imperial' : 'metric');
-      
-      // Check if user has 'notifications' enabled
-      const hasNotifications = user.profile.preferences?.includes('notifications');
-      setNotifications(hasNotifications ?? true);
-      
+      setUnits(user.profile.preferences?.includes('imperial') ? 'imperial' : 'metric');
+      setNotifications(user.profile.preferences?.includes('notifications') ?? true);
       setTimezone(user.profile.timezone || 'UTC');
     }
   }, [user]);
 
   const handleSave = async () => {
     if (!user?.id) return;
-    
     setSaving(true);
     try {
+      const prefs = [];
+      if (units === 'imperial') prefs.push('imperial');
+      if (notifications) prefs.push('notifications');
       const token = getAccessToken();
-      const preferences = [];
-      if (units === 'imperial') preferences.push('imperial');
-      if (notifications) preferences.push('notifications');
-
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/users/profile`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/users/profile`, {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          preferences,
-          timezone
-        })
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ preferences: prefs, timezone }),
       });
-
-      if (response.ok) {
-        toast.success('Settings saved successfully!');
+      if (res.ok) {
+        toast.success('Settings saved!');
         await refreshUser();
       } else {
-        const data = await response.json();
-        toast.error(`Failed to save settings: ${data.error?.message || 'Unknown error'}`);
+        const d = await res.json();
+        toast.error(d.error?.message || 'Failed to save');
       }
     } catch {
-      toast.error('Failed to save settings. Please try again.');
+      toast.error('Failed to save settings');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div className="space-y-6 max-w-3xl">
-      <h1 className="text-3xl font-bold">Settings</h1>
+    <div className="space-y-4 pb-6">
 
-      <Card>
-        <CardHeader title="Preferences" />
-        <CardBody>
-          <div className="space-y-6">
-            <Select
-              label="Units"
-              value={units}
-              onChange={(v) => setUnits(v)}
-              options={[{ value: 'metric', label: 'Metric (kg, cm)' }, { value: 'imperial', label: 'Imperial (lb, in)' }]}
-            />
+      {/* ── HEADER ── */}
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <p className="label-cap mb-1">Preferences</p>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Settings</h1>
+      </motion.div>
 
-            <Select
-              label="Timezone"
-              value={timezone}
-              onChange={(v) => setTimezone(v)}
-              options={[
-                { value: 'UTC', label: 'UTC' },
-                { value: 'America/New_York', label: 'Eastern Time (ET)' },
-                { value: 'America/Chicago', label: 'Central Time (CT)' },
-                { value: 'America/Denver', label: 'Mountain Time (MT)' },
-                { value: 'America/Los_Angeles', label: 'Pacific Time (PT)' }
-              ]}
-            />
+      {/* ── UNITS ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+        className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+      >
+        <div className="p-4 border-b border-gray-50">
+          <p className="label-cap mb-0.5">Measurement</p>
+          <h3 className="font-black text-gray-900">Units</h3>
+        </div>
+        <div className="p-4 grid grid-cols-2 gap-2">
+          {UNIT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setUnits(opt.value)}
+              className={`rounded-xl p-3.5 text-left transition-all border-2 ${
+                units === opt.value
+                  ? 'border-black bg-black text-white'
+                  : 'border-gray-100 bg-white text-gray-700 hover:border-gray-200'
+              }`}
+            >
+              <p className="font-black text-sm">{opt.label}</p>
+              <p className={`text-xs mt-0.5 ${units === opt.value ? 'text-[#00E676]' : 'text-gray-400'}`}>{opt.sub}</p>
+            </button>
+          ))}
+        </div>
+      </motion.div>
 
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="font-medium">Notifications</p>
-                <p className="text-sm text-gray-500">Receive push notifications for workout reminders</p>
-              </div>
-              <label className="inline-flex relative items-center cursor-pointer">
-                <input type="checkbox" checked={notifications} onChange={() => setNotifications((s) => !s)} className="sr-only peer" />
-                <div className={`w-11 h-6 bg-gray-200 rounded-full peer-checked:bg-green-600 transition-colors`} />
-              </label>
-            </div>
+      {/* ── TIMEZONE ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.1 }}
+        className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+      >
+        <div className="p-4 border-b border-gray-50">
+          <p className="label-cap mb-0.5">Location</p>
+          <h3 className="font-black text-gray-900">Timezone</h3>
+        </div>
+        <div className="p-4 space-y-2">
+          {TZ_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setTimezone(opt.value)}
+              className={`w-full flex items-center justify-between px-4 py-3 rounded-xl transition-all ${
+                timezone === opt.value
+                  ? 'bg-black text-white'
+                  : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+              }`}
+            >
+              <span className="text-sm font-bold">{opt.label}</span>
+              {timezone === opt.value && (
+                <div className="w-2 h-2 rounded-full bg-[#00E676]" />
+              )}
+            </button>
+          ))}
+        </div>
+      </motion.div>
 
-            <div className="pt-4">
-              <Button onClick={handleSave} disabled={saving} className="w-full">
-                {saving ? 'Saving...' : 'Save Settings'}
-              </Button>
-            </div>
+      {/* ── NOTIFICATIONS ── */}
+      <motion.div
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.15 }}
+        className="bg-white rounded-2xl border border-gray-100"
+      >
+        <div className="flex items-center justify-between p-4">
+          <div>
+            <h3 className="font-black text-gray-900">Notifications</h3>
+            <p className="text-xs text-gray-500 mt-0.5">Workout reminders & updates</p>
           </div>
-        </CardBody>
-      </Card>
+          <button
+            onClick={() => setNotifications(!notifications)}
+            className={`relative w-12 h-6 rounded-full transition-all duration-200 ${
+              notifications ? 'bg-[#00E676]' : 'bg-gray-200'
+            }`}
+          >
+            <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform duration-200 ${
+              notifications ? 'translate-x-6' : 'translate-x-0.5'
+            }`} />
+          </button>
+        </div>
+      </motion.div>
+
+      {/* ── SAVE ── */}
+      <motion.button
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.2 }}
+        whileTap={{ scale: 0.97 }}
+        onClick={handleSave}
+        disabled={saving}
+        className="w-full py-4 rounded-2xl bg-black text-[#00E676] font-black text-base flex items-center justify-center gap-2 hover:bg-gray-900 transition-colors disabled:opacity-50"
+      >
+        {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Settings'}
+      </motion.button>
     </div>
   );
 }

@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
+import { getInitials } from '@/lib/utils';
 import {
   HomeIcon,
   ChartBarIcon,
   ChartPieIcon,
-  FireIcon,
   Squares2X2Icon,
   Cog6ToothIcon,
   Bars3Icon,
@@ -19,7 +19,6 @@ import {
   HomeIcon as HomeIconSolid,
   ChartBarIcon as ChartBarIconSolid,
   ChartPieIcon as ChartPieIconSolid,
-  FireIcon as FireIconSolid,
   Squares2X2Icon as Squares2X2IconSolid,
   Cog6ToothIcon as Cog6ToothIconSolid,
 } from '@heroicons/react/24/solid';
@@ -37,17 +36,14 @@ export default function Navigation() {
   };
 
   const userNav = [
-    { name: 'Home', href: '/home', icon: HomeIcon, iconSolid: HomeIconSolid },
-    { name: 'Workout', href: '/workout', icon: FireIcon, iconSolid: FireIconSolid },
-    { name: 'Progress', href: '/progress', icon: ChartBarIcon, iconSolid: ChartBarIconSolid },
-    { name: 'Reports', href: '/reports', icon: ChartPieIcon, iconSolid: ChartPieIconSolid },
-    { name: 'Plans', href: '/plans', icon: Squares2X2Icon, iconSolid: Squares2X2IconSolid },
-    { name: 'Profile', href: '/profile', icon: Cog6ToothIcon, iconSolid: Cog6ToothIconSolid },
+    { name: 'Home',     href: '/home',     icon: HomeIcon,       iconSolid: HomeIconSolid },
+    { name: 'Plans',    href: '/plans',    icon: Squares2X2Icon, iconSolid: Squares2X2IconSolid },
+    { name: 'Progress', href: '/progress', icon: ChartBarIcon,   iconSolid: ChartBarIconSolid },
+    { name: 'Reports',  href: '/reports',  icon: ChartPieIcon,   iconSolid: ChartPieIconSolid },
+    { name: 'Profile',  href: '/profile',  icon: Cog6ToothIcon,  iconSolid: Cog6ToothIconSolid },
   ];
 
-  const initials = user?.name
-    ? user.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
-    : '?';
+  const initials = getInitials(user?.name);
 
   const subscriptionBadgeColor =
     user?.subscription?.status === 'active'

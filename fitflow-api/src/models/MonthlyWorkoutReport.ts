@@ -10,6 +10,8 @@ const MonthlyWorkoutReportSchema = new Schema({
   adherenceScore: { type: Number, min: 0, max: 100 },
   avgDuration: Number,
   strengthGains: { exercises: [{ name: String, initialWeight: Number, finalWeight: Number, improvement: Number }] },
+  leaveDaysCount: { type: Number, default: 0 },
+  leaveDates: { type: [String], default: [] },
   notes: String,
   generatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });

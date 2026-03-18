@@ -9,9 +9,8 @@ export function useDietPlan() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const token = getAccessToken();
-
   const refresh = useCallback(async (startDate?: string, endDate?: string) => {
+    const token = getAccessToken();
     if (!token) return;
     setLoading(true); setError(null);
     try {
@@ -26,42 +25,24 @@ export function useDietPlan() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
-
-  const generateForDate = useCallback(async (dateISO: string) => {
-    if (!token) throw new Error("Not authenticated");
-    const data = await fetchWithAuth(`/api/diet/generate`, token, {
-      method: "POST",
-      body: JSON.stringify({ date: dateISO }),
-    });
-    await refresh(dateISO, dateISO);
-    return data;
-  }, [token, refresh]);
-
-  const generateToday = useCallback(async () => {
-    if (!token) throw new Error("Not authenticated");
-    const data = await fetchWithAuth(`/api/diet/generate-daily`, token, {
-      method: "POST",
-      body: JSON.stringify({}),
-    });
-    await refresh();
-    return data;
-  }, [token, refresh]);
+  }, [getAccessToken]);
 
   const removePlan = useCallback(async (id: string) => {
+    const token = getAccessToken();
     if (!token) throw new Error("Not authenticated");
     await fetchWithAuth(`/api/diet/${id}`, token, { method: "DELETE" });
     await refresh();
-  }, [token, refresh]);
+  }, [getAccessToken, refresh]);
 
   const getPlan = useCallback(async (id: string) => {
+    const token = getAccessToken();
     if (!token) throw new Error("Not authenticated");
     return fetchWithAuth(`/api/diet/${id}`, token);
-  }, [token]);
+  }, [getAccessToken]);
 
   useEffect(() => {
-    if (token) refresh();
-  }, [token, refresh]);
+    if (getAccessToken()) refresh();
+  }, [getAccessToken, refresh]);
 
-  return { plans, loading, error, refresh, generateForDate, generateToday, removePlan, getPlan };
+  return { plans, loading, error, refresh, removePlan, getPlan };
 }

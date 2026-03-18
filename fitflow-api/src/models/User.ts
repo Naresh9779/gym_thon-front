@@ -14,7 +14,12 @@ const UserSchema = new Schema({
     activityLevel: String,
     preferences: [String],
     restrictions: [String],
-    timezone: { type: String, default: 'UTC' }
+    timezone: { type: String, default: 'UTC' },
+    dietPreferences: {
+      isVegetarian: { type: Boolean, default: false },
+      weeklyBudget: Number,
+      dietType: { type: String, enum: ['balanced', 'high_protein', 'low_carb', 'mediterranean'] },
+    },
   },
   subscription: {
     plan: String,
@@ -22,7 +27,13 @@ const UserSchema = new Schema({
     startDate: Date,
     endDate: Date,
     durationMonths: Number
-  }
+  },
+  assignedTrainerId: { type: Schema.Types.ObjectId, ref: 'User', default: null }, // admin user assigned as trainer
+  trainerNotes: [{
+    _id: { type: Schema.Types.ObjectId, auto: true },
+    text: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  }]
 }, { timestamps: true });
 
 export default model('User', UserSchema);

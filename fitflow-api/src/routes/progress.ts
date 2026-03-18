@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireActiveSubscription } from '../middleware/subscription';
 import ProgressLog from '../models/ProgressLog';
+import PlanRequest from '../models/PlanRequest';
 import { z } from 'zod';
 
 const router = Router();
@@ -190,6 +191,68 @@ router.get('/stats', async (req: AuthRequest, res) => {
   }
 });
 
+// POST /api/progress/measurements - log body measurements for today
+router.post('/measurements', async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+
+    const schema = z.object({
+      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      weight: z.number().min(0).optional(),
+      bodyFat: z.number().min(0).max(100).optional(),
+      waist: z.number().min(0).optional(),
+      hips: z.number().min(0).optional(),
+      chest: z.number().min(0).optional(),
+    });
+
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: { message: 'Invalid data', details: parsed.error.errors } });
+    }
+
+    const { date, ...measurementData } = parsed.data;
+    const logDate = new Date(date);
+    logDate.setHours(0, 0, 0, 0);
+
+    let log = await ProgressLog.findOne({ userId, date: logDate });
+    if (!log) {
+      log = new ProgressLog({ userId, date: logDate, meals: [] });
+    }
+    log.measurements = measurementData as any;
+    await log.save();
+
+    res.status(201).json({ ok: true, data: { log } });
+  } catch (err) {
+    console.error('[Progress] POST measurements error', err);
+    res.status(500).json({ ok: false, error: { message: 'Failed to save measurements' } });
+  }
+});
+
+// GET /api/progress/measurements?days=90 - measurement history
+router.get('/measurements', async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user!.userId;
+    const days = parseInt(String(req.query.days || '90')) || 90;
+    const since = new Date();
+    since.setDate(since.getDate() - days);
+    since.setHours(0, 0, 0, 0);
+
+    const logs = await ProgressLog.find({ userId, date: { $gte: since }, measurements: { $exists: true } })
+      .select('date measurements')
+      .sort({ date: -1 })
+      .lean();
+
+    const entries = logs
+      .filter(l => l.measurements && Object.values(l.measurements).some(v => v != null))
+      .map(l => ({ date: (l.date as Date).toISOString().slice(0, 10), ...l.measurements }));
+
+    return res.json({ ok: true, data: { entries } });
+  } catch (err) {
+    console.error('[Progress] GET measurements error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to fetch measurements' } });
+  }
+});
+
 // GET /api/progress/trends?days=30 - per-user daily series
 router.get('/trends', async (req: AuthRequest, res) => {
   try {
@@ -220,6 +283,26 @@ router.get('/trends', async (req: AuthRequest, res) => {
   } catch (err) {
     console.error('[Progress] trends error', err);
     return res.status(500).json({ ok: false, error: { message: 'Failed to fetch progress trends' } });
+  }
+});
+
+// GET /api/progress/checkin-history?limit=10 - return past check-ins from plan requests
+router.get('/checkin-history', async (req: AuthRequest, res) => {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) return res.status(401).json({ ok: false, error: { message: 'Unauthorized' } });
+
+    const limit = Math.min(20, parseInt(String(req.query.limit || '10')));
+    const requests = await PlanRequest.find({ userId, status: { $in: ['generated', 'dismissed', 'pending'] } })
+      .select('checkIn planTypes status requestedAt generatedAt')
+      .sort({ requestedAt: -1 })
+      .limit(limit)
+      .lean();
+
+    return res.json({ ok: true, data: { history: requests } });
+  } catch (err) {
+    console.error('[Progress] checkin-history error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to fetch check-in history' } });
   }
 });
 

@@ -4,9 +4,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { Card, CardHeader, CardBody } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
+import { motion } from 'framer-motion';
+import { ChevronLeft, Plus, Trash2, Loader2 } from 'lucide-react';
 
 interface Props { params: Promise<{ planId: string }> }
 
@@ -24,11 +23,7 @@ interface Meal {
   name: string;
   foods: FoodItem[];
   totalCalories: number;
-  macros: {
-    protein: number;
-    carbs: number;
-    fats: number;
-  };
+  macros: { protein: number; carbs: number; fats: number };
 }
 
 interface DietPlan {
@@ -41,6 +36,18 @@ interface DietPlan {
   meals?: Meal[];
 }
 
+const inputCls = "w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:border-gray-900 focus:outline-none transition-all text-sm font-medium bg-white";
+
+const section = (title: string, sub: string, children: React.ReactNode) => (
+  <div className="bg-white rounded-2xl border border-gray-100">
+    <div className="p-4 border-b border-gray-50">
+      <h2 className="font-black text-gray-900">{title}</h2>
+      <p className="text-xs text-gray-400 mt-0.5">{sub}</p>
+    </div>
+    <div className="p-5">{children}</div>
+  </div>
+);
+
 export default function AdminEditDietPage({ params }: Props) {
   const { planId } = use(params);
   const router = useRouter();
@@ -51,7 +58,6 @@ export default function AdminEditDietPage({ params }: Props) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // form
   const [name, setName] = useState('');
   const [date, setDate] = useState('');
   const [dailyCalories, setDailyCalories] = useState<number | ''>('');
@@ -64,13 +70,13 @@ export default function AdminEditDietPage({ params }: Props) {
     const run = async () => {
       try {
         const token = getAccessToken();
-        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${planId}`,{ headers: { Authorization: `Bearer ${token}` } });
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${planId}`, { headers: { Authorization: `Bearer ${token}` } });
         const j = await res.json();
         if (!j.ok) throw new Error(j.error?.message || 'Failed to fetch plan');
         const p = j.data.dietPlan as DietPlan;
         setPlan(p);
         setName(p.name || '');
-        setDate(new Date(p.date).toISOString().slice(0,10));
+        setDate(new Date(p.date).toISOString().slice(0, 10));
         setDailyCalories(p.dailyCalories ?? '');
         setProtein(p.macros?.protein ?? '');
         setCarbs(p.macros?.carbs ?? '');
@@ -99,9 +105,9 @@ export default function AdminEditDietPage({ params }: Props) {
     if (meals.length > 0) body.meals = meals;
 
     const token = getAccessToken();
-    const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${planId}`,{
+    const resp = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/diet/${planId}`, {
       method: 'PATCH',
-      headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
     const j = await resp.json();
@@ -114,229 +120,207 @@ export default function AdminEditDietPage({ params }: Props) {
     }
   };
 
-  const addMeal = () => {
-    setMeals([...meals, {
-      time: '08:00',
-      name: 'New Meal',
-      foods: [],
-      totalCalories: 0,
-      macros: { protein: 0, carbs: 0, fats: 0 }
-    }]);
+  const addMeal = () => setMeals([...meals, { time: '08:00', name: 'New Meal', foods: [], totalCalories: 0, macros: { protein: 0, carbs: 0, fats: 0 } }]);
+  const removeMeal = (i: number) => setMeals(meals.filter((_, idx) => idx !== i));
+
+  const addFood = (mi: number) => {
+    const m = [...meals];
+    m[mi].foods.push({ name: '', portion: '', calories: 0, protein: 0, carbs: 0, fats: 0 });
+    setMeals(m);
   };
 
-  const removeMeal = (mealIndex: number) => {
-    setMeals(meals.filter((_, i) => i !== mealIndex));
+  const removeFood = (mi: number, fi: number) => {
+    const m = [...meals];
+    m[mi].foods = m[mi].foods.filter((_, i) => i !== fi);
+    recalcMeal(mi, m);
   };
 
-  const addFood = (mealIndex: number) => {
-    const newMeals = [...meals];
-    newMeals[mealIndex].foods.push({
-      name: '',
-      portion: '',
-      calories: 0,
-      protein: 0,
-      carbs: 0,
-      fats: 0
-    });
-    setMeals(newMeals);
+  const updateFood = (mi: number, fi: number, field: keyof FoodItem, value: any) => {
+    const m = [...meals];
+    m[mi].foods[fi] = { ...m[mi].foods[fi], [field]: value };
+    recalcMeal(mi, m);
   };
 
-  const removeFood = (mealIndex: number, foodIndex: number) => {
-    const newMeals = [...meals];
-    newMeals[mealIndex].foods = newMeals[mealIndex].foods.filter((_, i) => i !== foodIndex);
-    recalculateMeal(mealIndex, newMeals);
+  const updateMeal = (mi: number, field: 'time' | 'name', value: string) => {
+    const m = [...meals]; m[mi][field] = value; setMeals(m);
   };
 
-  const updateFood = (mealIndex: number, foodIndex: number, field: keyof FoodItem, value: any) => {
-    const newMeals = [...meals];
-    newMeals[mealIndex].foods[foodIndex] = {
-      ...newMeals[mealIndex].foods[foodIndex],
-      [field]: value
-    };
-    recalculateMeal(mealIndex, newMeals);
+  const recalcMeal = (mi: number, arr: Meal[]) => {
+    const meal = arr[mi];
+    meal.totalCalories = meal.foods.reduce((s, f) => s + (f.calories || 0), 0);
+    meal.macros.protein = meal.foods.reduce((s, f) => s + (f.protein || 0), 0);
+    meal.macros.carbs = meal.foods.reduce((s, f) => s + (f.carbs || 0), 0);
+    meal.macros.fats = meal.foods.reduce((s, f) => s + (f.fats || 0), 0);
+    setMeals([...arr]);
   };
 
-  const updateMeal = (mealIndex: number, field: 'time' | 'name', value: string) => {
-    const newMeals = [...meals];
-    newMeals[mealIndex][field] = value;
-    setMeals(newMeals);
-  };
-
-  const recalculateMeal = (mealIndex: number, mealsArray: Meal[]) => {
-    const meal = mealsArray[mealIndex];
-    meal.totalCalories = meal.foods.reduce((sum, f) => sum + (f.calories || 0), 0);
-    meal.macros.protein = meal.foods.reduce((sum, f) => sum + (f.protein || 0), 0);
-    meal.macros.carbs = meal.foods.reduce((sum, f) => sum + (f.carbs || 0), 0);
-    meal.macros.fats = meal.foods.reduce((sum, f) => sum + (f.fats || 0), 0);
-    setMeals([...mealsArray]);
-  };
-
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (error || !plan) return <div className="p-6 text-red-600">{error || 'Not found'}</div>;
+  if (loading) return (
+    <div className="flex items-center justify-center py-20">
+      <div className="w-8 h-8 border-2 border-[#00E676] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+  if (error || !plan) return (
+    <div className="p-4 bg-red-50 border border-red-200 rounded-2xl text-sm font-semibold text-red-600">{error || 'Not found'}</div>
+  );
 
   return (
-    <div className="p-6 max-w-6xl mx-auto">
-      <Link href={`/users/${plan.userId}`} className="text-sm text-gray-600 hover:text-gray-800">← Back to User</Link>
-      
-      <Card className="mt-4">
-        <CardHeader title="Edit Diet Plan" subtitle={plan.name} />
-        <CardBody>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-            <Input label="Plan Name" value={name} onChange={(e) => setName((e.target as any).value)} />
-            <Input label="Date" type="date" value={date} onChange={(e) => setDate((e.target as any).value)} />
-            <Input label="Daily Calories" type="number" value={dailyCalories as any} onChange={(e) => setDailyCalories(Number((e.target as any).value))} />
-            <div className="grid grid-cols-3 gap-2">
-              <Input label="Protein (g)" type="number" value={protein as any} onChange={(e) => setProtein(Number((e.target as any).value))} />
-              <Input label="Carbs (g)" type="number" value={carbs as any} onChange={(e) => setCarbs(Number((e.target as any).value))} />
-              <Input label="Fats (g)" type="number" value={fats as any} onChange={(e) => setFats(Number((e.target as any).value))} />
-            </div>
+    <div className="space-y-5 max-w-4xl">
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
+        <Link href={`/users/${plan.userId}`} className="inline-flex items-center gap-1 text-xs font-bold text-gray-400 hover:text-gray-600 mb-3">
+          <ChevronLeft className="w-3.5 h-3.5" /> Back to User
+        </Link>
+        <p className="label-cap mb-1">Admin</p>
+        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Edit Diet Plan</h1>
+        <p className="text-sm text-gray-400 mt-1">{plan.name}</p>
+      </motion.div>
+
+      {section('Plan Details', 'Calories and macro targets', (
+        <div className="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label className="label-cap block mb-2">Plan Name</label>
+            <input type="text" value={name} onChange={e => setName(e.target.value)} className={inputCls} />
           </div>
-
-          <div className="border-t pt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-lg font-semibold">Meals & Foods</h3>
-              <Button variant="secondary" onClick={addMeal} className="text-sm">
-                + Add Meal
-              </Button>
-            </div>
-
-            {meals.length === 0 && (
-              <div className="text-center py-8 text-gray-500">
-                No meals yet. Click "Add Meal" to create one.
+          <div>
+            <label className="label-cap block mb-2">Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inputCls} />
+          </div>
+          <div>
+            <label className="label-cap block mb-2">Daily Calories <span className="text-gray-400 normal-case font-medium">(kcal)</span></label>
+            <input type="number" value={dailyCalories as any} onChange={e => setDailyCalories(Number(e.target.value))} className={inputCls} min="0" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { label: 'Protein', val: protein, set: setProtein },
+              { label: 'Carbs', val: carbs, set: setCarbs },
+              { label: 'Fats', val: fats, set: setFats },
+            ].map(({ label, val, set }) => (
+              <div key={label}>
+                <label className="label-cap block mb-2">{label} <span className="text-gray-400 normal-case">(g)</span></label>
+                <input type="number" value={val as any} onChange={e => set(Number(e.target.value))} className={inputCls} min="0" />
               </div>
-            )}
+            ))}
+          </div>
+        </div>
+      ))}
 
-            <div className="space-y-6">
-              {meals.map((meal, mealIndex) => (
-                <div key={mealIndex} className="border rounded-lg p-4 bg-gray-50">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                    <Input 
-                      label="Meal Time"
-                      type="time"
-                      value={meal.time} 
-                      onChange={(e) => updateMeal(mealIndex, 'time', (e.target as any).value)}
-                    />
-                    <Input 
-                      label="Meal Name"
-                      value={meal.name} 
-                      onChange={(e) => updateMeal(mealIndex, 'name', (e.target as any).value)}
-                      className="md:col-span-2"
-                    />
+      <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between p-4 border-b border-gray-50">
+          <div>
+            <h2 className="font-black text-gray-900">Meals</h2>
+            <p className="text-xs text-gray-400 mt-0.5">{meals.length} meal{meals.length !== 1 ? 's' : ''}</p>
+          </div>
+          <button
+            type="button"
+            onClick={addMeal}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-black text-[#00E676] text-xs font-black hover:bg-gray-900 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> Add Meal
+          </button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {meals.length === 0 ? (
+            <p className="text-sm text-gray-400 text-center py-6">No meals yet. Click "Add Meal" to create one.</p>
+          ) : meals.map((meal, mi) => (
+            <div key={mi} className="border-2 border-gray-100 rounded-2xl overflow-hidden">
+              {/* Meal header */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50">
+                <input
+                  type="time"
+                  value={meal.time}
+                  onChange={e => updateMeal(mi, 'time', e.target.value)}
+                  className="px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-medium focus:border-gray-900 focus:outline-none bg-white w-32"
+                />
+                <input
+                  type="text"
+                  value={meal.name}
+                  onChange={e => updateMeal(mi, 'name', e.target.value)}
+                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-black focus:border-gray-900 focus:outline-none bg-white"
+                  placeholder="Meal name"
+                />
+                <button type="button" onClick={() => removeMeal(mi)} className="p-2 rounded-xl text-red-400 hover:bg-red-50 transition-colors">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Meal totals */}
+              <div className="grid grid-cols-4 gap-3 px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+                {[
+                  { label: 'Calories', val: meal.totalCalories, unit: 'kcal' },
+                  { label: 'Protein', val: meal.macros.protein, unit: 'g' },
+                  { label: 'Carbs', val: meal.macros.carbs, unit: 'g' },
+                  { label: 'Fats', val: meal.macros.fats, unit: 'g' },
+                ].map(({ label, val, unit }) => (
+                  <div key={label} className="text-center">
+                    <p className="label-cap">{label}</p>
+                    <p className="text-sm font-black text-gray-900">{val}<span className="text-gray-400 font-medium text-xs">{unit}</span></p>
                   </div>
+                ))}
+              </div>
 
-                  <div className="bg-white p-3 rounded border mb-3">
-                    <div className="text-sm font-semibold mb-2">Meal Totals</div>
-                    <div className="grid grid-cols-4 gap-2 text-sm">
-                      <div>
-                        <span className="text-gray-600">Calories:</span>
-                        <span className="ml-1 font-medium">{meal.totalCalories}</span>
+              {/* Foods */}
+              <div className="p-3 space-y-2">
+                {meal.foods.map((food, fi) => (
+                  <div key={fi} className="bg-white border border-gray-100 rounded-xl p-3">
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 mb-2">
+                      <div className="sm:col-span-2">
+                        <label className="label-cap block mb-1">Food</label>
+                        <input type="text" value={food.name} onChange={e => updateFood(mi, fi, 'name', e.target.value)} className={inputCls} placeholder="e.g. Chicken breast" />
                       </div>
                       <div>
-                        <span className="text-gray-600">Protein:</span>
-                        <span className="ml-1 font-medium">{meal.macros.protein}g</span>
+                        <label className="label-cap block mb-1">Portion</label>
+                        <input type="text" value={food.portion} onChange={e => updateFood(mi, fi, 'portion', e.target.value)} className={inputCls} placeholder="100g" />
                       </div>
                       <div>
-                        <span className="text-gray-600">Carbs:</span>
-                        <span className="ml-1 font-medium">{meal.macros.carbs}g</span>
+                        <label className="label-cap block mb-1">Cal</label>
+                        <input type="number" value={food.calories} onChange={e => updateFood(mi, fi, 'calories', Number(e.target.value))} className={inputCls} min="0" />
                       </div>
                       <div>
-                        <span className="text-gray-600">Fats:</span>
-                        <span className="ml-1 font-medium">{meal.macros.fats}g</span>
+                        <label className="label-cap block mb-1">Protein</label>
+                        <input type="number" value={food.protein} onChange={e => updateFood(mi, fi, 'protein', Number(e.target.value))} className={inputCls} min="0" />
+                      </div>
+                      <div>
+                        <label className="label-cap block mb-1">Carbs</label>
+                        <input type="number" value={food.carbs} onChange={e => updateFood(mi, fi, 'carbs', Number(e.target.value))} className={inputCls} min="0" />
                       </div>
                     </div>
-                  </div>
-
-                  <div className="space-y-3">
-                    {meal.foods.map((food, foodIndex) => (
-                      <div key={foodIndex} className="bg-white p-3 rounded border">
-                        <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-                          <Input 
-                            label="Food Name"
-                            value={food.name}
-                            onChange={(e) => updateFood(mealIndex, foodIndex, 'name', (e.target as any).value)}
-                            className="md:col-span-2"
-                          />
-                          <Input 
-                            label="Portion"
-                            value={food.portion}
-                            onChange={(e) => updateFood(mealIndex, foodIndex, 'portion', (e.target as any).value)}
-                            placeholder="e.g. 100g, 1 cup"
-                          />
-                          <Input 
-                            label="Calories"
-                            type="number"
-                            value={food.calories}
-                            onChange={(e) => updateFood(mealIndex, foodIndex, 'calories', Number((e.target as any).value))}
-                          />
-                          <Input 
-                            label="Protein (g)"
-                            type="number"
-                            value={food.protein}
-                            onChange={(e) => updateFood(mealIndex, foodIndex, 'protein', Number((e.target as any).value))}
-                          />
-                          <Input 
-                            label="Carbs (g)"
-                            type="number"
-                            value={food.carbs}
-                            onChange={(e) => updateFood(mealIndex, foodIndex, 'carbs', Number((e.target as any).value))}
-                          />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
-                          <Input 
-                            label="Fats (g)"
-                            type="number"
-                            value={food.fats}
-                            onChange={(e) => updateFood(mealIndex, foodIndex, 'fats', Number((e.target as any).value))}
-                          />
-                          <div className="flex items-end">
-                            <button
-                              onClick={() => removeFood(mealIndex, foodIndex)}
-                              className="text-sm text-red-600 hover:text-red-800 pb-2"
-                            >
-                              Remove Food
-                            </button>
-                          </div>
-                        </div>
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1">
+                        <label className="label-cap block mb-1">Fats</label>
+                        <input type="number" value={food.fats} onChange={e => updateFood(mi, fi, 'fats', Number(e.target.value))} className={inputCls} min="0" />
                       </div>
-                    ))}
+                      <button type="button" onClick={() => removeFood(mi, fi)} className="mt-5 p-2 rounded-xl text-red-400 hover:bg-red-50 transition-colors">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-
-                  <div className="flex justify-between mt-3">
-                    <Button 
-                      variant="secondary" 
-                      onClick={() => addFood(mealIndex)}
-                      className="text-sm"
-                    >
-                      + Add Food to {meal.name}
-                    </Button>
-                    <Button 
-                      variant="secondary" 
-                      onClick={() => removeMeal(mealIndex)}
-                      className="text-sm text-red-600 hover:bg-red-50"
-                    >
-                      Remove Meal
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                ))}
+                <button
+                  type="button"
+                  onClick={() => addFood(mi)}
+                  className="w-full py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
+                >
+                  + Add Food
+                </button>
+              </div>
             </div>
-          </div>
+          ))}
+        </div>
+      </div>
 
-          <div className="flex justify-end gap-3 mt-6 pt-6 border-t">
-            <Link href={`/users/${plan.userId}`}>
-              <Button variant="secondary">Cancel</Button>
-            </Link>
-            <Button 
-              variant="primary" 
-              className="bg-green-500 hover:bg-green-600" 
-              onClick={save}
-              disabled={saving}
-            >
-              {saving ? 'Saving...' : 'Save Changes'}
-            </Button>
-          </div>
-        </CardBody>
-      </Card>
+      <div className="flex gap-3 justify-end">
+        <Link href={`/users/${plan.userId}`} className="px-5 py-2.5 rounded-xl border-2 border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors">
+          Cancel
+        </Link>
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={save}
+          disabled={saving}
+          className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-black text-[#00E676] text-sm font-black hover:bg-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        >
+          {saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : 'Save Changes'}
+        </motion.button>
+      </div>
     </div>
   );
 }

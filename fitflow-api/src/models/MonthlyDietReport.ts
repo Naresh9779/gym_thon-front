@@ -10,6 +10,8 @@ const MonthlyDietReportSchema = new Schema({
   avgDailyCalories: Number,
   avgMacros: { protein: Number, carbs: Number, fats: Number },
   totalDaysLogged: Number,
+  leaveDaysCount: { type: Number, default: 0 },
+  leaveDates: { type: [String], default: [] },
   notes: String,
   generatedAt: { type: Date, default: Date.now }
 }, { timestamps: true });

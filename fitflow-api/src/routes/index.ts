@@ -8,6 +8,9 @@ import reports from './reports';
 import admin from './admin';
 import analytics from './analytics';
 import cron from './cron';
+import plans from './plans';
+import leave from './leave';
+import gym from './gym';
 
 const router = Router();
 
@@ -21,5 +24,8 @@ router.use('/reports', reports);
 router.use('/admin', admin);
 router.use('/analytics', analytics);
 router.use('/cron', cron);
+router.use('/plans', plans);
+router.use('/leave', leave);
+router.use('/gym', gym);
 
 export default router;

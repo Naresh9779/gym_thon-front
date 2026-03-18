@@ -20,6 +20,16 @@ const loginSchema = z.object({
   password: z.string()
 });
 
+async function findValidSession(userId: string, refreshToken: string) {
+  const sessions = await Session.find({ userId });
+  for (const session of sessions) {
+    if (!session.refreshTokenHash || !session.expiresAt) continue;
+    const isValid = await comparePassword(refreshToken, session.refreshTokenHash as string);
+    if (isValid && session.expiresAt > new Date()) return session;
+  }
+  return null;
+}
+
 export async function register(req: Request, res: Response) {
   try {
     const { email, password, name } = registerSchema.parse(req.body);
@@ -176,19 +186,9 @@ export async function refreshAccessToken(req: Request, res: Response) {
     const decoded = verifyRefreshToken(refreshToken);
 
     // Find session
-    const sessions = await Session.find({ userId: decoded.userId });
-    let validSession = null;
+    const validSession = await findValidSession(decoded.userId, refreshToken);
 
-    for (const session of sessions) {
-      if (!session.refreshTokenHash || !session.expiresAt) continue;
-      const isValid = await comparePassword(refreshToken, session.refreshTokenHash);
-      if (isValid && session.expiresAt > new Date()) {
-        validSession = session;
-        break;
-      }
-    }
-
-      if (!validSession) {
+    if (!validSession) {
       return res.status(401).json({ ok: false, error: { message: 'Invalid or expired refresh token' } });
     }
 
@@ -217,14 +217,9 @@ export async function logout(req: AuthRequest, res: Response) {
     
     if (refreshToken) {
       // Delete the specific session
-      const sessions = await Session.find({ userId: req.user?.userId });
-      for (const session of sessions) {
-          if (!session.refreshTokenHash) continue;
-        const isMatch = await comparePassword(refreshToken, session.refreshTokenHash);
-        if (isMatch) {
-          await Session.deleteOne({ _id: session._id });
-          break;
-        }
+      const session = await findValidSession(req.user?.userId as string, refreshToken);
+      if (session) {
+        await Session.deleteOne({ _id: session._id });
       }
     }
 

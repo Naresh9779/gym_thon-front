@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useUserProgress } from "@/hooks/useUserProgress";
 import { useToast } from "@/hooks/useToast";
 import { Check, Loader2, ChevronDown } from "lucide-react";
 
 interface FoodItem { name: string; portion?: string }
+
+interface ProgressLog {
+  date: string;
+  meals?: Array<{ mealName: string; calories?: number }>;
+}
 
 interface Props {
   mealName: string;
@@ -14,37 +18,42 @@ interface Props {
   calories?: number;
   foods?: FoodItem[];
   macros?: { protein?: number; carbs?: number; fats?: number };
+  // Lifted state from parent (optional — if not provided, logging is disabled)
+  logs?: ProgressLog[];
+  logMeal?: (mealName: string, calories?: number, macros?: { p?: number; c?: number; f?: number }) => Promise<{ success: boolean; alreadyLogged?: boolean }>;
   onLog?: () => void;
 }
 
-export default function MealCard({ mealName, time, calories, foods = [], macros, onLog }: Props) {
-  const { logMeal, logs } = useUserProgress();
+export default function MealCard({ mealName, time, calories, foods = [], macros, logs = [], logMeal, onLog }: Props) {
   const toast = useToast();
   const [isLogging, setIsLogging] = useState(false);
-  const [isLogged, setIsLogged] = useState(false);
   const [expanded, setExpanded] = useState(false);
 
-  useEffect(() => {
+  const isLogged = useMemo(() => {
     const todayStr = new Date().toISOString().slice(0, 10);
-    const already = logs.some(log => {
+    return logs.some(log => {
       const logDate = new Date(log.date).toISOString().slice(0, 10);
       if (logDate !== todayStr) return false;
       return (log.meals || []).some(
         (m: any) => (m.mealName || "").trim().toLowerCase() === mealName.trim().toLowerCase()
       );
     });
-    setIsLogged(already);
   }, [logs, mealName]);
 
   const handleLog = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isLogging || isLogged) return;
+    if (isLogging || isLogged || !logMeal) return;
     setIsLogging(true);
     try {
-      const result = await logMeal(mealName, calories, macros ? { p: macros.protein, c: macros.carbs, f: macros.fats } : undefined);
-      if (result && (result as any).success) {
-        setIsLogged(true);
-        toast.success((result as any).alreadyLogged ? `${mealName} already logged.` : `${mealName} logged!`);
+      const result = await logMeal(
+        mealName,
+        calories,
+        macros ? { p: macros.protein, c: macros.carbs, f: macros.fats } : undefined
+      );
+      if (result.success) {
+        toast.success(result.alreadyLogged ? `${mealName} already logged.` : `${mealName} logged!`);
+      } else {
+        toast.error("Failed to log meal. Check your subscription.");
       }
     } catch {
       toast.error("Failed to log meal");
@@ -62,7 +71,7 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
   return (
     <motion.div
       layout
-      className={`rounded-2xl border-2 overflow-hidden transition-colors ${
+      className={`rounded-2xl border-2 transition-colors ${
         isLogged ? "border-[#00E676] bg-black" : "border-gray-100 bg-white"
       }`}
     >
@@ -71,7 +80,6 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
         className="flex items-center gap-3 p-4 cursor-pointer"
         onClick={() => setExpanded(!expanded)}
       >
-        {/* Left: name + time */}
         <div className="flex-1 min-w-0">
           <p className={`font-black text-lg leading-tight ${isLogged ? "text-[#00E676]" : "text-gray-900"}`}>
             {mealName}
@@ -81,16 +89,18 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
           )}
         </div>
 
-        {/* Right: calories + chevron */}
         <div className="flex items-center gap-2 flex-shrink-0">
           {calories !== undefined && (
             <span className={`text-xl font-black num ${isLogged ? "text-[#00E676]" : "text-orange-500"}`}>
               {calories}<span className="text-sm font-semibold text-gray-400 ml-0.5">cal</span>
             </span>
           )}
-          <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
-            <ChevronDown className={`w-4 h-4 ${isLogged ? "text-gray-600" : "text-gray-300"}`} />
-          </motion.div>
+          {isLogged && <Check className="w-4 h-4 text-[#00E676]" />}
+          {!isLogged && (
+            <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+              <ChevronDown className="w-4 h-4 text-gray-300" />
+            </motion.div>
+          )}
         </div>
       </div>
 
@@ -103,6 +113,7 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeInOut" }}
+            style={{ overflow: "hidden" }}
           >
             <div className={`px-4 pb-4 pt-2 space-y-4 border-t ${isLogged ? "border-white/10" : "border-gray-50"}`}>
 
@@ -133,7 +144,7 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
                       { label: "Fats",    val: macros.fats ?? 0,    color: "text-blue-400" },
                     ].map(m => (
                       <div key={m.label} className="text-center">
-                        <p className={`text-xl font-black num ${isLogged ? m.color : m.color}`}>{m.val}<span className="text-xs font-bold text-gray-400 ml-0.5">g</span></p>
+                        <p className={`text-xl font-black num ${m.color}`}>{m.val}<span className="text-xs font-bold text-gray-400 ml-0.5">g</span></p>
                         <p className="label-cap">{m.label}</p>
                       </div>
                     ))}
@@ -141,20 +152,22 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
                 </div>
               )}
 
-              {/* Log button */}
-              <motion.button
-                whileTap={{ scale: 0.97 }}
-                onClick={handleLog}
-                disabled={isLogged || isLogging}
-                className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${
-                  isLogged
-                    ? "bg-[#00E676]/20 text-[#00E676] cursor-default"
-                    : "bg-black text-[#00E676] hover:bg-gray-900 shadow-lg"
-                }`}
-              >
-                {isLogging ? <Loader2 className="w-4 h-4 animate-spin" /> : isLogged ? <Check className="w-4 h-4" /> : null}
-                {isLogged ? "Logged" : isLogging ? "Logging..." : "Log Meal"}
-              </motion.button>
+              {/* Log button — only shown when logMeal is provided */}
+              {logMeal && (
+                <motion.button
+                  whileTap={{ scale: 0.97 }}
+                  onClick={handleLog}
+                  disabled={isLogged || isLogging}
+                  className={`w-full py-3 rounded-xl text-sm font-black flex items-center justify-center gap-2 transition-all ${
+                    isLogged
+                      ? "bg-[#00E676]/20 text-[#00E676] cursor-default"
+                      : "bg-black text-[#00E676] hover:bg-gray-900 shadow-lg"
+                  }`}
+                >
+                  {isLogging ? <Loader2 className="w-4 h-4 animate-spin" /> : isLogged ? <Check className="w-4 h-4" /> : null}
+                  {isLogged ? "Logged" : isLogging ? "Logging..." : "Log Meal"}
+                </motion.button>
+              )}
             </div>
           </motion.div>
         )}

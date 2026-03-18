@@ -5,6 +5,7 @@ import DietPlan from '../models/DietPlan';
 import WorkoutPlan from '../models/WorkoutPlan';
 import MonthlyDietReport from '../models/MonthlyDietReport';
 import MonthlyWorkoutReport from '../models/MonthlyWorkoutReport';
+import { getApprovedLeaveDatesForMonth, getGymHolidayDatesForMonth } from '../utils/schemas';
 
 const router = Router();
 
@@ -41,35 +42,47 @@ router.get('/diet/monthly/:year/:month', async (req: AuthRequest, res) => {
         userId,
         date: { $gte: startDate, $lte: endDate }
       }).lean();
-      
-      // Calculate stats
-      const totalDaysLogged = progressLogs.filter(l => l.meals && l.meals.length > 0).length;
-      const totalCalories = progressLogs.reduce((sum, log) => {
+
+      // Fetch approved leave dates for this month
+      const leaveDatesSet = await getApprovedLeaveDatesForMonth(userId, year, month);
+      const leaveDaysCount = leaveDatesSet.size;
+      const holidayDatesSet = await getGymHolidayDatesForMonth(year, month);
+      const offDatesSet = new Set([...leaveDatesSet, ...holidayDatesSet]);
+
+      // Exclude leave days and gym holidays from adherence calculations
+      const activeLogs = progressLogs.filter(l => {
+        const dateStr = new Date(l.date).toISOString().slice(0, 10);
+        return !offDatesSet.has(dateStr);
+      });
+
+      // Calculate stats (excluding leave days)
+      const totalDaysLogged = activeLogs.filter(l => l.meals && l.meals.length > 0).length;
+      const totalCalories = activeLogs.reduce((sum, log) => {
         return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.calories || 0), 0) || 0);
       }, 0);
-      
-      const totalProtein = progressLogs.reduce((sum, log) => {
+
+      const totalProtein = activeLogs.reduce((sum, log) => {
         return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.p || 0), 0) || 0);
       }, 0);
-      
-      const totalCarbs = progressLogs.reduce((sum, log) => {
+
+      const totalCarbs = activeLogs.reduce((sum, log) => {
         return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.c || 0), 0) || 0);
       }, 0);
-      
-      const totalFats = progressLogs.reduce((sum, log) => {
+
+      const totalFats = activeLogs.reduce((sum, log) => {
         return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.f || 0), 0) || 0);
       }, 0);
-      
+
       const avgDailyCalories = totalDaysLogged > 0 ? Math.round(totalCalories / totalDaysLogged) : 0;
       const avgProtein = totalDaysLogged > 0 ? Math.round(totalProtein / totalDaysLogged) : 0;
       const avgCarbs = totalDaysLogged > 0 ? Math.round(totalCarbs / totalDaysLogged) : 0;
       const avgFats = totalDaysLogged > 0 ? Math.round(totalFats / totalDaysLogged) : 0;
-      
+
       // Calculate adherence (compared to diet plans)
-      const totalPlannedCalories = dietPlans.reduce((sum, plan) => sum + (plan.dailyCalories || 0), 0);
+      const totalPlannedCalories = dietPlans.reduce((sum, plan) => sum + ((plan as any).avgDailyCalories || (plan as any).dailyCalories || 0), 0);
       const avgPlannedCalories = dietPlans.length > 0 ? totalPlannedCalories / dietPlans.length : 0;
       const adherenceScore = avgPlannedCalories > 0 ? Math.min(100, Math.round((avgDailyCalories / avgPlannedCalories) * 100)) : 0;
-      
+
       report = new MonthlyDietReport({
         userId,
         year,
@@ -84,6 +97,8 @@ router.get('/diet/monthly/:year/:month', async (req: AuthRequest, res) => {
           fats: avgFats
         },
         totalDaysLogged,
+        leaveDaysCount,
+        leaveDates: Array.from(leaveDatesSet),
         generatedAt: new Date()
       });
       
@@ -130,30 +145,44 @@ router.get('/workout/monthly/:year/:month', async (req: AuthRequest, res) => {
         userId,
         date: { $gte: startDate, $lte: endDate }
       }).lean();
-      
-      // Calculate stats
-      const completedWorkouts = progressLogs.filter(l => l.workout && (l.workout.completedExercises || 0) > 0).length;
-      const totalWorkoutDays = progressLogs.filter(l => l.workout).length;
-      
-      const totalDuration = progressLogs.reduce((sum, log) => {
+
+      // Fetch approved leave dates for this month
+      const leaveDatesSetWorkout = await getApprovedLeaveDatesForMonth(userId, year, month);
+      const leaveDaysCountWorkout = leaveDatesSetWorkout.size;
+      const holidayDatesSetWorkout = await getGymHolidayDatesForMonth(year, month);
+      const offDatesSetWorkout = new Set([...leaveDatesSetWorkout, ...holidayDatesSetWorkout]);
+
+      // Exclude leave days and gym holidays from adherence
+      const activeLogsWorkout = progressLogs.filter(l => {
+        const dateStr = new Date(l.date).toISOString().slice(0, 10);
+        return !offDatesSetWorkout.has(dateStr);
+      });
+
+      // Calculate stats (excluding leave days)
+      const completedWorkouts = activeLogsWorkout.filter(l => l.workout && (l.workout.completedExercises || 0) > 0).length;
+      const totalWorkoutDays = activeLogsWorkout.filter(l => l.workout).length;
+
+      const totalDuration = activeLogsWorkout.reduce((sum, log) => {
         return sum + (log.workout?.durationSec || 0);
       }, 0);
-      
+
       const avgDuration = completedWorkouts > 0 ? Math.round(totalDuration / completedWorkouts) : 0;
-      
-      // Calculate adherence based on planned workouts
-      // Estimate: if plan has X days/week, month should have ~4-5 weeks
+
+      // Calculate adherence based on planned workouts (subtract leave days from expected)
       let expectedWorkouts = 0;
       if (workoutPlans.length > 0) {
         const plan = workoutPlans[0];
         const daysInMonth = new Date(year, month, 0).getDate();
         const weeksInMonth = daysInMonth / 7;
         const workoutDaysPerWeek = plan.days?.filter((d: any) => !d.isRestDay).length || 0;
-        expectedWorkouts = Math.round(workoutDaysPerWeek * weeksInMonth);
+        const rawExpected = Math.round(workoutDaysPerWeek * weeksInMonth);
+        // Rough deduction: leave days proportionally reduce expected workouts
+        const leaveFraction = leaveDaysCountWorkout / daysInMonth;
+        expectedWorkouts = Math.max(0, Math.round(rawExpected * (1 - leaveFraction)));
       }
-      
+
       const adherenceScore = expectedWorkouts > 0 ? Math.min(100, Math.round((completedWorkouts / expectedWorkouts) * 100)) : 0;
-      
+
       report = new MonthlyWorkoutReport({
         userId,
         year,
@@ -163,7 +192,9 @@ router.get('/workout/monthly/:year/:month', async (req: AuthRequest, res) => {
         totalWorkouts: expectedWorkouts || totalWorkoutDays,
         adherenceScore,
         avgDuration,
-        strengthGains: { exercises: [] }, // TODO: implement exercise tracking
+        leaveDaysCount: leaveDaysCountWorkout,
+        leaveDates: Array.from(leaveDatesSetWorkout),
+        strengthGains: { exercises: [] },
         generatedAt: new Date()
       });
       

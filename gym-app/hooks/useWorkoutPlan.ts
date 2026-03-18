@@ -5,12 +5,12 @@ import { useAuth } from "./useAuth";
 
 export function useWorkoutPlans() {
   const { getAccessToken } = useAuth();
-  const token = getAccessToken();
   const [plans, setPlans] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
+    const token = getAccessToken();
     if (!token) return;
     setLoading(true); setError(null);
     try {
@@ -21,9 +21,10 @@ export function useWorkoutPlans() {
     } finally {
       setLoading(false);
     }
-  }, [token]);
+  }, [getAccessToken]);
 
   const generateCycle = useCallback(async (startDateISO: string, durationWeeks = 4) => {
+    const token = getAccessToken();
     if (!token) throw new Error("Not authenticated");
     const data = await fetchWithAuth(`/api/workouts/generate-cycle`, token, {
       method: "POST",
@@ -31,15 +32,16 @@ export function useWorkoutPlans() {
     });
     await refresh();
     return data;
-  }, [token, refresh]);
+  }, [getAccessToken, refresh]);
 
   const removePlan = useCallback(async (id: string) => {
+    const token = getAccessToken();
     if (!token) throw new Error("Not authenticated");
     await fetchWithAuth(`/api/workouts/${id}`, token, { method: "DELETE" });
     await refresh();
-  }, [token, refresh]);
+  }, [getAccessToken, refresh]);
 
-  useEffect(() => { if (token) refresh(); }, [token, refresh]);
+  useEffect(() => { if (getAccessToken()) refresh(); }, [getAccessToken, refresh]);
 
   return { plans, loading, error, refresh, generateCycle, removePlan };
 }

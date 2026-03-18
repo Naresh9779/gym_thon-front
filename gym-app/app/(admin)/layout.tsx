@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import AdminNavigation from '@/components/admin/AdminNavigation';
+import AdminBottomNav from '@/components/admin/AdminBottomNav';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -13,35 +14,30 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     if (!loading && !user) {
       router.push('/auth');
     } else if (!loading && user && user.role !== 'admin') {
-      // User is authenticated but not admin - redirect to user home
       router.push('/home');
     }
   }, [user, loading, router]);
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-[#f4f4f5]">
         <div className="text-center">
-          <svg className="animate-spin h-12 w-12 text-green-500 mx-auto mb-4" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <p className="text-gray-600">Loading...</p>
+          <div className="w-10 h-10 rounded-full border-2 border-[#00E676] border-t-transparent animate-spin mx-auto mb-3" />
+          <p className="text-sm font-semibold text-gray-500 uppercase tracking-widest">Loading</p>
         </div>
       </div>
     );
   }
 
-  if (!user || user.role !== 'admin') {
-    return null;
-  }
+  if (!user || user.role !== 'admin') return null;
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f4f4f5]">
       <AdminNavigation />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 sm:pb-6">
         {children}
       </main>
+      <AdminBottomNav />
     </div>
   );
 }

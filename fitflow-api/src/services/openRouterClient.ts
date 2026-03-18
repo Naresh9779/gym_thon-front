@@ -12,6 +12,7 @@ interface OpenRouterRequest {
   temperature?: number;
   max_tokens?: number;
   top_p?: number;
+  response_format?: { type: 'json_object' | 'text' };
 }
 
 interface OpenRouterResponse {
@@ -31,31 +32,51 @@ interface OpenRouterResponse {
 }
 
 /**
- * OpenRouter API Client
- * Supports free models: Google Gemini Flash 1.5, Meta Llama 3.1 8B
+ * Gemini API Client (OpenAI-compatible endpoint)
+ * Model: gemini-2.0-flash (free tier — 15 RPM, 1M tokens/day)
  * Includes retry logic with exponential backoff for rate limits
  */
 class OpenRouterClient {
   private client: AxiosInstance;
-  private defaultModel = 'qwen/qwen3-vl-30b-a3b-thinking'; // User-provided free model
+  private defaultModel = 'gemini-2.0-flash';
   private maxRetries = 3;
-  private baseDelay = 2000; // Start with 2 seconds
+  private baseDelay = 2000;
 
   constructor() {
-    if (!ENV.OPENROUTER_API_KEY) {
-      console.warn('[OpenRouter] Warning: OPENROUTER_API_KEY not set. AI generation will fail.');
+    // Priority: Groq → Gemini → OpenRouter
+    const apiKey = ENV.GROQ_API_KEY || ENV.GEMINI_API_KEY || ENV.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      console.warn('[AI] Warning: No AI API key set (GROQ_API_KEY / GEMINI_API_KEY / OPENROUTER_API_KEY). AI generation will fail.');
     }
-    
+
+    let baseURL: string;
+    let provider: string;
+
+    if (ENV.GROQ_API_KEY) {
+      baseURL = 'https://api.groq.com/openai/v1';
+      this.defaultModel = 'llama-3.1-8b-instant';
+      provider = 'Groq';
+    } else if (ENV.GEMINI_API_KEY) {
+      baseURL = 'https://generativelanguage.googleapis.com/v1beta/openai/';
+      this.defaultModel = 'gemini-2.0-flash';
+      provider = 'Gemini';
+    } else {
+      baseURL = 'https://openrouter.ai/api/v1';
+      this.defaultModel = 'qwen/qwen3-coder:free';
+      provider = 'OpenRouter';
+    }
+
     this.client = axios.create({
-      baseURL: 'https://openrouter.ai/api/v1',
+      baseURL,
       headers: {
-        'Authorization': `Bearer ${ENV.OPENROUTER_API_KEY}`,
-        'HTTP-Referer': 'https://fitflow.app', // Optional: For rankings
-        'X-Title': 'FitFlow', // Optional: For rankings
+        'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        ...(provider === 'OpenRouter' && { 'HTTP-Referer': 'https://fitflow.app', 'X-Title': 'FitFlow' }),
       },
-      timeout: 60000, // 60 second timeout for AI generation
+      timeout: 60000,
     });
+
+    console.log(`[AI] Using ${provider} backend (model: ${this.defaultModel})`);
   }
 
   /**
@@ -80,16 +101,21 @@ class OpenRouterClient {
       topP?: number;
     } = {}
   ): Promise<string> {
-    if (!ENV.OPENROUTER_API_KEY) {
-      throw new Error('OpenRouter API key not configured. Please set OPENROUTER_API_KEY in environment variables.');
+    const apiKey = ENV.GROQ_API_KEY || ENV.GEMINI_API_KEY || ENV.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error('No AI API key configured. Please set GROQ_API_KEY or GEMINI_API_KEY in environment variables.');
     }
 
+    const isGemini = !!ENV.GEMINI_API_KEY && !ENV.GROQ_API_KEY;
+    const isGroq = !!ENV.GROQ_API_KEY;
     const request: OpenRouterRequest = {
       model: options.model || this.defaultModel,
       messages,
       temperature: options.temperature ?? 0.7,
       max_tokens: options.maxTokens ?? 2000,
-      top_p: options.topP ?? 0.9,
+      ...(isGemini ? {} : { top_p: options.topP ?? 0.9 }),
+      // JSON mode: Groq and OpenAI-compatible endpoints support this — forces valid JSON output
+      ...(isGroq ? { response_format: { type: 'json_object' } } : {}),
     };
 
     // Retry logic with exponential backoff
@@ -103,7 +129,7 @@ class OpenRouterClient {
           throw new Error('No content in OpenRouter response');
         }
 
-        console.log(`[OpenRouter] Tokens used: ${response.data.usage.total_tokens} (attempt ${attempt + 1})`);
+        console.log(`[AI] Tokens used: ${response.data.usage.total_tokens} (attempt ${attempt + 1})`);
         return content.trim();
       } catch (error) {
         lastError = error;
@@ -112,9 +138,9 @@ class OpenRouterClient {
           const status = error.response?.status;
           const errorData = error.response?.data;
           
-          console.error(`[OpenRouter] API Error (attempt ${attempt + 1}/${this.maxRetries + 1}):`, {
+          console.error(`[AI] API Error (attempt ${attempt + 1}/${this.maxRetries + 1}):`, {
             status,
-            data: errorData,
+            data: JSON.stringify(errorData, null, 2),
             message: error.message,
           });
           
@@ -132,7 +158,7 @@ class OpenRouterClient {
             if (attempt < this.maxRetries) {
               // Exponential backoff: 2s, 4s, 8s
               const delay = this.baseDelay * Math.pow(2, attempt);
-              console.log(`[OpenRouter] Retrying in ${delay}ms...`);
+              console.log(`[AI] Retrying in ${delay}ms...`);
               await this.sleep(delay);
               continue;
             } else {
@@ -140,7 +166,9 @@ class OpenRouterClient {
             }
           }
           
-          throw new Error(`OpenRouter API error: ${errorData?.error?.message || error.message}`);
+          // Gemini returns errors as an array: [{ error: { message, status } }]
+          const geminiMsg = Array.isArray(errorData) ? errorData[0]?.error?.message : undefined;
+          throw new Error(`AI API error: ${geminiMsg || errorData?.error?.message || error.message}`);
         }
         throw error;
       }
@@ -153,12 +181,15 @@ class OpenRouterClient {
    * Generate diet plan using AI
    * Uses free tier model (Gemini Flash 1.5)
    */
-  async generateDietPlan(prompt: string): Promise<string> {
+  async generateDietPlan(prompt: string, options?: { adminInstructions?: string }): Promise<string> {
+    const adminRule = options?.adminInstructions
+      ? ` ADMIN OVERRIDE (must follow above all else): ${options.adminInstructions}`
+      : '';
     return this.generateCompletion(
       [
         {
           role: 'system',
-          content: 'You are an expert nutritionist and dietitian. Generate personalized meal plans based on user requirements. Always respond with valid JSON only, no additional text.',
+          content: `You are an expert nutritionist and dietitian. Generate personalized meal plans based on user requirements. Always respond with valid JSON only, no additional text. CRITICAL: You MUST generate all 7 days (Monday through Sunday) — never truncate or stop early.${adminRule}`,
         },
         {
           role: 'user',
@@ -166,9 +197,8 @@ class OpenRouterClient {
         },
       ],
       {
-        model: 'qwen/qwen3-coder:free', // Free model provided by user
-        temperature: 0.7, // Balanced creativity
-        maxTokens: 2500, // Enough for detailed meal plan
+        temperature: 0.7,
+        maxTokens: 8000,
       }
     );
   }
@@ -177,12 +207,21 @@ class OpenRouterClient {
    * Generate workout plan using AI
    * Uses Llama 3.1 8B for workout logic
    */
-  async generateWorkoutPlan(prompt: string): Promise<string> {
+  async generateWorkoutPlan(
+    prompt: string,
+    options?: { daysPerWeek?: number; exercisesPerDay?: number; adminInstructions?: string }
+  ): Promise<string> {
+    const countRule = (options?.daysPerWeek && options?.exercisesPerDay)
+      ? ` CRITICAL: generate EXACTLY ${options.daysPerWeek} days and EXACTLY ${options.exercisesPerDay} exercises per day — no exceptions.`
+      : '';
+    const adminRule = options?.adminInstructions
+      ? ` ADMIN OVERRIDE (must follow above all else): ${options.adminInstructions}`
+      : '';
     return this.generateCompletion(
       [
         {
           role: 'system',
-          content: 'You are an expert fitness trainer and exercise physiologist. Generate personalized workout plans based on user requirements. Always respond with valid JSON only, no additional text.',
+          content: `You are an expert fitness trainer and exercise physiologist. Generate personalized workout plans based on user requirements. Always respond with valid JSON only, no additional text.${countRule}${adminRule}`,
         },
         {
           role: 'user',
@@ -190,9 +229,8 @@ class OpenRouterClient {
         },
       ],
       {
-        model: 'qwen/qwen3-coder:free', // Use same free model for consistency
-        temperature: 0.6, // More deterministic for workout structure
-        maxTokens: 3000, // Enough for full workout cycle
+        temperature: 0.6,
+        maxTokens: 4000,
       }
     );
   }
@@ -205,7 +243,7 @@ class OpenRouterClient {
       const response = await this.client.get('/models');
       return response.data.data;
     } catch (error) {
-      console.error('[OpenRouter] Failed to fetch models:', error);
+      console.error('[AI] Failed to fetch models:', error);
       throw error;
     }
   }

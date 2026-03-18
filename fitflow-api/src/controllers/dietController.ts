@@ -1,7 +1,10 @@
 import { Response } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../middleware/auth';
+import { checkInSchema, getMondayOf, getLastMonthDate } from '../utils/schemas';
 import DietPlan from '../models/DietPlan';
+import MonthlyDietReport from '../models/MonthlyDietReport';
+import User from '../models/User';
 import { dietGenerationService } from '../services/dietGenerationService';
 
 // Validation schemas
@@ -12,6 +15,15 @@ const generateDietSchema = z.object({
 
 const generateDailySchema = z.object({
   previousDayProgressId: z.string().optional(),
+});
+
+const generateWeeklySchema = z.object({
+  checkIn: checkInSchema,
+  goalOverride: z.string().optional(),
+  dietType: z.enum(['balanced', 'high_protein', 'low_carb', 'mediterranean']).optional(),
+  isVegetarian: z.boolean().optional(),
+  budget: z.number().min(0).optional(),
+  additionalPreferences: z.string().max(500).optional(),
 });
 
 /**
@@ -31,17 +43,17 @@ export async function getUserDietPlans(req: AuthRequest, res: Response) {
     // Parse query parameters
     const { startDate, endDate, limit = '30' } = req.query;
 
-    // Build query
+    // Build query — support both legacy date field and new weekStartDate
     const query: any = { userId };
     if (startDate || endDate) {
-      query.date = {};
-      if (startDate) query.date.$gte = new Date(startDate as string);
-      if (endDate) query.date.$lte = new Date(endDate as string);
+      query.weekStartDate = {};
+      if (startDate) query.weekStartDate.$gte = new Date(startDate as string);
+      if (endDate) query.weekStartDate.$lte = new Date(endDate as string);
     }
 
-    // Fetch diet plans
+    // Fetch diet plans — sort by weekStartDate descending (weekly plans)
     const dietPlans = await DietPlan.find(query)
-      .sort({ date: -1 })
+      .sort({ weekStartDate: -1, createdAt: -1 })
       .limit(parseInt(limit as string))
       .lean();
 
@@ -101,7 +113,7 @@ export async function getDietPlanById(req: AuthRequest, res: Response) {
 
 /**
  * POST /api/diet/generate
- * Generate a diet plan for a specific date using AI
+ * Generate a diet plan for a specific date using AI (legacy)
  */
 export async function generateDietPlan(req: AuthRequest, res: Response) {
   try {
@@ -127,22 +139,6 @@ export async function generateDietPlan(req: AuthRequest, res: Response) {
 
     const { date, previousDayProgressId } = validation.data;
     const targetDate = new Date(date);
-
-    // Check if diet plan already exists for this date
-    const existingPlan = await DietPlan.findOne({
-      userId,
-      date: targetDate,
-    });
-
-    if (existingPlan) {
-      return res.status(409).json({
-        ok: false,
-        error: {
-          message: 'Diet plan already exists for this date',
-          existingPlanId: existingPlan._id,
-        },
-      });
-    }
 
     console.log(`[DietController] Generating diet plan for ${date}...`);
 
@@ -174,7 +170,6 @@ export async function generateDietPlan(req: AuthRequest, res: Response) {
   } catch (error: any) {
     console.error('[DietController] Error generating diet plan:', error);
 
-    // Handle specific errors
     if (error.message?.includes('User profile incomplete')) {
       return res.status(400).json({
         ok: false,
@@ -204,7 +199,7 @@ export async function generateDietPlan(req: AuthRequest, res: Response) {
 
 /**
  * POST /api/diet/generate-daily
- * Generate diet plan for today (used by cron job)
+ * Generate diet plan for today (legacy / used by cron job)
  */
 export async function generateDailyDietPlan(req: AuthRequest, res: Response) {
   try {
@@ -216,7 +211,6 @@ export async function generateDailyDietPlan(req: AuthRequest, res: Response) {
       });
     }
 
-    // Validate request body
     const validation = generateDailySchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({
@@ -229,38 +223,17 @@ export async function generateDailyDietPlan(req: AuthRequest, res: Response) {
     }
 
     const { previousDayProgressId } = validation.data;
-
-    // Use today's date
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Check if diet plan already exists for today
-    const existingPlan = await DietPlan.findOne({
-      userId,
-      date: today,
-    });
-
-    if (existingPlan) {
-      return res.json({
-        ok: true,
-        data: {
-          dietPlan: existingPlan,
-          message: 'Diet plan already exists for today',
-          alreadyExists: true,
-        },
-      });
-    }
-
     console.log(`[DietController] Generating daily diet plan for user ${userId}...`);
 
-    // Generate diet plan using AI
     const generatedPlan = await dietGenerationService.generateDietPlan(
       userId,
       today,
       previousDayProgressId
     );
 
-    // Save to database with 'auto-daily' flag
     const savedPlan = await dietGenerationService.saveDietPlan(
       userId,
       today,
@@ -281,7 +254,6 @@ export async function generateDailyDietPlan(req: AuthRequest, res: Response) {
   } catch (error: any) {
     console.error('[DietController] Error generating daily diet plan:', error);
 
-    // Handle specific errors
     if (error.message?.includes('User profile incomplete')) {
       return res.status(400).json({
         ok: false,
@@ -295,6 +267,151 @@ export async function generateDailyDietPlan(req: AuthRequest, res: Response) {
     return res.status(500).json({
       ok: false,
       error: { message: 'Failed to generate daily diet plan' },
+    });
+  }
+}
+
+/**
+ * POST /api/diet/generate-weekly
+ * User self-generates their weekly diet plan
+ * Accepts checkIn + optional overrides, fetches last month's report, generates weekly plan
+ */
+export async function generateWeeklyDietPlan(req: AuthRequest, res: Response) {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) {
+      return res.status(401).json({
+        ok: false,
+        error: { message: 'Unauthorized' },
+      });
+    }
+
+    const validation = generateWeeklySchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          message: 'Invalid request data',
+          details: validation.error.errors,
+        },
+      });
+    }
+
+    const { checkIn, goalOverride, dietType, isVegetarian, budget, additionalPreferences } = validation.data;
+    const overrides = (goalOverride || dietType || isVegetarian !== undefined || budget || additionalPreferences)
+      ? { goalOverride, dietType, isVegetarian, budget, additionalPreferences }
+      : undefined;
+
+    // Update user profile weight from check-in
+    if (checkIn?.currentWeight) {
+      await User.findByIdAndUpdate(userId, { 'profile.weight': checkIn.currentWeight });
+    }
+
+    // Compute Monday of the current week
+    const thisMonday = getMondayOf(new Date());
+
+    // If it's Fri/Sat/Sun (isWeekEnd) and this week's plan already exists, generate for NEXT week
+    const dayOfWeek = new Date().getDay();
+    const daysLeftInWeek = dayOfWeek === 0 ? 0 : 7 - dayOfWeek;
+    const isWeekEnd = daysLeftInWeek <= 2; // Fri=2, Sat=1, Sun=0
+    const thisDietPlan = await DietPlan.findOne({ userId, weekStartDate: thisMonday });
+
+    let weekStartDate: Date;
+    if (thisDietPlan && isWeekEnd) {
+      // Generate for next week
+      weekStartDate = new Date(thisMonday);
+      weekStartDate.setDate(thisMonday.getDate() + 7);
+    } else {
+      weekStartDate = thisMonday;
+    }
+
+    // Check if plan already exists for target week
+    const existingPlan = await DietPlan.findOne({ userId, weekStartDate });
+    if (existingPlan) {
+      return res.status(409).json({
+        ok: false,
+        error: {
+          message: thisDietPlan && isWeekEnd
+            ? 'Diet plan already exists for next week'
+            : 'Weekly diet plan already exists for this week',
+          existingPlanId: existingPlan._id,
+        },
+      });
+    }
+
+    // Fetch last month's diet report
+    const { year: lastMonthYear, month: lastMonthMonth } = getLastMonthDate();
+    const lastMonthDietReport = await MonthlyDietReport.findOne({
+      userId,
+      year: lastMonthYear,
+      month: lastMonthMonth,
+    }).lean();
+
+    const lastMonthReport = lastMonthDietReport ? {
+      adherenceScore: lastMonthDietReport.adherenceScore ?? 0,
+      avgDailyCalories: lastMonthDietReport.avgDailyCalories ?? 0,
+      avgMacros: {
+        protein: lastMonthDietReport.avgMacros?.protein ?? 0,
+        carbs: lastMonthDietReport.avgMacros?.carbs ?? 0,
+        fats: lastMonthDietReport.avgMacros?.fats ?? 0,
+      },
+      totalDaysLogged: lastMonthDietReport.totalDaysLogged ?? 0,
+    } : undefined;
+
+    console.log(`[DietController] Generating weekly diet plan for user ${userId}, week starting ${weekStartDate.toISOString().split('T')[0]}`);
+
+    const generated = await dietGenerationService.generateWeeklyDietPlan(
+      userId,
+      weekStartDate,
+      overrides,
+      checkIn,
+      lastMonthReport,
+      undefined
+    );
+
+    const savedPlan = await dietGenerationService.saveWeeklyDietPlan(
+      userId,
+      weekStartDate,
+      generated,
+      'user-self',
+      checkIn
+    );
+
+    console.log(`[DietController] Weekly diet plan generated: ${savedPlan._id}`);
+
+    return res.status(201).json({
+      ok: true,
+      data: {
+        dietPlan: savedPlan,
+        message: 'Weekly diet plan generated successfully',
+      },
+    });
+  } catch (error: any) {
+    console.error('[DietController] Error generating weekly diet plan:', error);
+
+    if (error.message?.includes('User profile incomplete')) {
+      return res.status(400).json({
+        ok: false,
+        error: {
+          message: error.message,
+          code: 'INCOMPLETE_PROFILE',
+        },
+      });
+    }
+
+    if (error.message?.includes('OpenRouter')) {
+      return res.status(503).json({
+        ok: false,
+        error: {
+          message: 'AI service temporarily unavailable',
+          details: error.message,
+        },
+      });
+    }
+
+    return res.status(500).json({
+      ok: false,
+      error: { message: 'Failed to generate weekly diet plan' },
     });
   }
 }

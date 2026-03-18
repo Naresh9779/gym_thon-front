@@ -7,19 +7,37 @@ import { useUserProgress } from '@/hooks/useUserProgress';
 
 export default function TodayDietPage() {
   const { plans: dietPlans, loading: dietLoading } = useDietPlan();
-  const { logs } = useUserProgress();
+  const { logs, logMeal, loading: progressLoading } = useUserProgress();
 
-  const latestDiet = dietPlans?.[0];
-  const meals = latestDiet?.meals || [];
-  const totalCalories = latestDiet?.dailyCalories ?? 0;
+  const today = new Date();
+  const todayStr = today.toISOString().slice(0, 10);
 
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayLog = logs.find(log => new Date(log.date).toISOString().slice(0, 10) === todayStr);
+  // Find active weekly plan whose date range contains today
+  const weeklyPlan = dietPlans.find((p: any) => {
+    if (!p.weekStartDate) return false;
+    const start = new Date(p.weekStartDate);
+    const end = new Date(p.weekEndDate || p.weekStartDate);
+    start.setHours(0, 0, 0, 0);
+    end.setHours(23, 59, 59, 999);
+    return today >= start && today <= end;
+  }) || dietPlans[0]; // fallback to latest
+
+  // Find today's day entry within the weekly plan
+  const todayDayEntry = weeklyPlan?.days?.find((d: any) =>
+    d.date && new Date(d.date).toISOString().slice(0, 10) === todayStr
+  );
+
+  const meals = todayDayEntry?.meals || weeklyPlan?.meals || [];
+  const totalCalories = todayDayEntry?.totalCalories ?? weeklyPlan?.avgDailyCalories ?? weeklyPlan?.dailyCalories ?? 0;
+
+  const todayLog = logs.find((log: any) => new Date(log.date).toISOString().slice(0, 10) === todayStr);
   const loggedCalories = todayLog?.meals?.reduce((sum: number, m: any) => sum + (m.calories || 0), 0) ?? 0;
   const remaining = Math.max(0, totalCalories - loggedCalories);
   const pct = totalCalories > 0 ? Math.min(Math.round((loggedCalories / totalCalories) * 100), 100) : 0;
 
-  if (dietLoading) {
+  const loading = dietLoading || progressLoading;
+
+  if (loading) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map(i => <div key={i} className="h-20 bg-white rounded-2xl animate-pulse" />)}
@@ -34,6 +52,12 @@ export default function TodayDietPage() {
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <p className="label-cap mb-1">Today</p>
         <h1 className="text-3xl font-black text-gray-900 tracking-tight">Nutrition</h1>
+        {weeklyPlan?.weekStartDate && (
+          <p className="text-xs text-gray-400 mt-0.5">
+            Week of {new Date(weeklyPlan.weekStartDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+            {weeklyPlan.weekEndDate && ` – ${new Date(weeklyPlan.weekEndDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
+          </p>
+        )}
       </motion.div>
 
       {/* ── CALORIE HERO ── */}
@@ -44,7 +68,6 @@ export default function TodayDietPage() {
           className="hero-card p-6"
         >
           <div className="flex items-end justify-between mb-5">
-            {/* Remaining */}
             <div>
               <p className="label-cap text-gray-500 mb-2">Remaining</p>
               <div className="stat-hero accent-orange num">
@@ -52,7 +75,6 @@ export default function TodayDietPage() {
                 <span className="text-xl font-bold text-gray-600 ml-1.5">kcal</span>
               </div>
             </div>
-            {/* Logged / Total */}
             <div className="text-right space-y-1">
               <div>
                 <span className="text-2xl font-black text-white num">{loggedCalories}</span>
@@ -102,9 +124,11 @@ export default function TodayDietPage() {
               <MealCard
                 mealName={meal.name}
                 time={meal.time}
-                calories={meal.calories}
+                calories={meal.totalCalories ?? meal.calories}
                 foods={meal.foods}
                 macros={meal.macros}
+                logs={logs}
+                logMeal={logMeal}
               />
             </motion.div>
           ))}

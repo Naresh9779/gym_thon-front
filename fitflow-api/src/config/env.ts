@@ -16,6 +16,8 @@ export const ENV = {
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || '15m',
   JWT_REFRESH_EXPIRES_IN: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+  GEMINI_API_KEY: process.env.GEMINI_API_KEY,
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
   APP_URL: process.env.APP_URL || 'http://localhost:3000',
   RAPIDAPI_KEY: process.env.RAPIDAPI_KEY,
   ADMIN_EMAIL: process.env.ADMIN_EMAIL || 'admin@fitflow.com',
