@@ -1946,7 +1946,7 @@ router.patch('/payments/:id/cancel', async (req, res) => {
     // Expire the subscription linked to this payment
     await Subscription.updateOne(
       { paymentId: payment._id, status: 'active' },
-      { status: 'cancelled' }
+      { status: 'expired' }
     );
     res.json({ ok: true });
   } catch { res.status(500).json({ ok: false, error: { message: 'Failed to cancel payment' } }); }
