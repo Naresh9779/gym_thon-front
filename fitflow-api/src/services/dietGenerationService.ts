@@ -580,7 +580,7 @@ Generate exactly 7 days starting Monday.`;
     }
 
     const userContext: UserContext = {
-      userId: user._id.toString(),
+      userId: String(user._id),
       age: user.profile.age,
       weight: user.profile.weight,
       height: user.profile.height,

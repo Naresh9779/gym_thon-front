@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import jwt from 'jsonwebtoken';
 import { authenticate, requireAdmin } from '../middleware/auth';
 import { planGenerationLimiter, aiOperationLimiter } from '../middleware/rateLimiter';
 import User from '../models/User';
@@ -15,20 +16,111 @@ import { z } from 'zod';
 import { checkInSchema, getLastMonthDate } from '../utils/schemas';
 import GymHoliday from '../models/GymHoliday';
 import Announcement from '../models/Announcement';
+import SubscriptionPlan from '../models/SubscriptionPlan';
+import Payment from '../models/Payment';
+import Subscription from '../models/Subscription';
+import GymSettings from '../models/GymSettings';
+import PlanRequest from '../models/PlanRequest';
 
 const router = Router();
 
 // All admin routes require authentication + admin role
 router.use(authenticate, requireAdmin);
 
-// GET /api/admin/users - list users (safe fields)
-router.get('/users', async (_req, res) => {
+// GET /api/admin/users - list users with server-side pagination, search and filters
+router.get('/users', async (req, res) => {
   try {
-    const users = await User.find().select('name email role createdAt profile subscription').lean();
-    res.json({ ok: true, data: { users } });
+    const {
+      page = '1', limit = '20', search = '',
+      tab = 'all', planName = '',
+    } = req.query as Record<string, string>;
+
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+    const skip     = (pageNum - 1) * limitNum;
+
+    // Compute tab counts (without search/planName for accurate badges)
+    const baseFilter: Record<string, any> = { role: { $ne: 'admin' } };
+    const now = new Date(); now.setHours(0, 0, 0, 0);
+    const soon = new Date(now); soon.setDate(now.getDate() + 7);
+    const [activeSubIds, expiredSubIds, expiringSubIds, pendingPaymentUserIds] = await Promise.all([
+      Subscription.distinct('_id', { status: { $in: ['active', 'trial'] }, endDate: { $gt: now } }),
+      Subscription.distinct('_id', { status: 'expired' }),
+      Subscription.distinct('_id', { status: { $in: ['active', 'trial'] }, endDate: { $gte: now, $lte: soon } }),
+      Payment.distinct('userId', { paymentStatus: 'pending' }),
+    ]);
+
+    // Build base filter (exclude admins)
+    const buildFilter = async (t: string): Promise<Record<string, any>> => {
+      const f: Record<string, any> = { role: { $ne: 'admin' } };
+      if (search.trim()) {
+        f.$or = [
+          { name:  { $regex: search.trim(), $options: 'i' } },
+          { email: { $regex: search.trim(), $options: 'i' } },
+        ];
+      }
+      if (planName && planName !== 'all') {
+        const planSubIds = await Subscription.distinct('_id', { planName, status: { $in: ['active', 'trial', 'expired'] } });
+        f.activeSubscriptionId = { $in: planSubIds };
+      }
+      switch (t) {
+        case 'active':          f.activeSubscriptionId = { $in: activeSubIds };          break;
+        case 'expired':         f.activeSubscriptionId = { $in: expiredSubIds };         break;
+        case 'expiring':        f.activeSubscriptionId = { $in: expiringSubIds };        break;
+        case 'left_gym':        f.gymStatus = 'left';                                    break;
+        case 'pending_payment': f._id = { $in: pendingPaymentUserIds };                  break;
+      }
+      return f;
+    };
+
+    const filter = await buildFilter(tab);
+
+    const [all, active, expired, expiring, leftGym, pendingPayment] = await Promise.all([
+      User.countDocuments(baseFilter),
+      User.countDocuments({ ...baseFilter, activeSubscriptionId: { $in: activeSubIds } }),
+      User.countDocuments({ ...baseFilter, activeSubscriptionId: { $in: expiredSubIds } }),
+      User.countDocuments({ ...baseFilter, activeSubscriptionId: { $in: expiringSubIds } }),
+      User.countDocuments({ ...baseFilter, gymStatus: 'left' }),
+      User.countDocuments({ ...baseFilter, _id: { $in: pendingPaymentUserIds } }),
+    ]);
+
+    const [users, total] = await Promise.all([
+      User.find(filter)
+        .select('name email role createdAt profile gymStatus leftAt activeSubscriptionId')
+        .populate('activeSubscriptionId')
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limitNum)
+        .lean(),
+      User.countDocuments(filter),
+    ]);
+
+    const usersWithSub = users.map((u: any) => ({ ...u, subscription: u.activeSubscriptionId, activeSubscriptionId: undefined }));
+
+    res.json({
+      ok: true,
+      data: {
+        users: usersWithSub,
+        total,
+        page: pageNum,
+        totalPages: Math.ceil(total / limitNum),
+        counts: { all, active, expired, expiring, left_gym: leftGym, pending_payment: pendingPayment },
+      },
+    });
   } catch (err) {
     console.error('[Admin] Error listing users', err);
     res.status(500).json({ ok: false, error: { message: 'Failed to list users' } });
+  }
+});
+
+// GET /api/admin/users/plan-names — distinct subscription plan names (for filter dropdown)
+router.get('/users/plan-names', async (_req, res) => {
+  try {
+    const names = await Subscription.distinct('planName', { planName: { $exists: true, $ne: '' } });
+    res.json({ ok: true, data: { planNames: names.filter(Boolean).sort() } });
+  } catch (err) {
+    console.error('[Admin] plan-names error', err);
+    res.status(500).json({ ok: false, error: { message: 'Failed to fetch plan names' } });
   }
 });
 
@@ -40,12 +132,17 @@ router.get('/users/expiring', async (req, res) => {
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() + days);
 
-    const users = await User.find({
-      'subscription.endDate': { $gte: now, $lte: cutoff },
-      'subscription.status': { $in: ['active', 'trial'] },
-    }).select('name email subscription createdAt').lean();
+    const expiringSubIds = await Subscription.distinct('_id', {
+      endDate: { $gte: now, $lte: cutoff },
+      status:  { $in: ['active', 'trial'] },
+    });
+    const users = await User.find({ role: { $ne: 'admin' }, activeSubscriptionId: { $in: expiringSubIds } })
+      .select('name email createdAt activeSubscriptionId')
+      .populate('activeSubscriptionId')
+      .lean();
+    const mapped = (users as any[]).map(u => ({ ...u, subscription: u.activeSubscriptionId, activeSubscriptionId: undefined }));
 
-    return res.json({ ok: true, data: { users, count: users.length } });
+    return res.json({ ok: true, data: { users: mapped, count: mapped.length } });
   } catch (err) {
     console.error('[Admin] expiring users error', err);
     return res.status(500).json({ ok: false, error: { message: 'Failed to fetch expiring users' } });
@@ -60,9 +157,11 @@ router.get('/users/inactive', async (req, res) => {
     since.setDate(since.getDate() - days);
 
     // All users with active subscriptions
-    const activeUsers = await User.find({
-      'subscription.status': { $in: ['active', 'trial'] },
-    }).select('name email subscription createdAt').lean();
+    const activeSubIds = await Subscription.distinct('_id', { status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } });
+    const activeUsers = await User.find({ role: 'user', activeSubscriptionId: { $in: activeSubIds } })
+      .select('name email createdAt activeSubscriptionId')
+      .populate('activeSubscriptionId')
+      .lean();
 
     // Users who have logged any progress in last N days
     const recentlyActiveIds = await ProgressLog.distinct('userId', { date: { $gte: since } });
@@ -118,7 +217,7 @@ router.patch('/users/:userId/profile', async (req, res) => {
       }
     }
 
-    const updated = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).select('name email role profile subscription');
+    const updated = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).select('name email role profile');
     return res.json({ ok: true, data: { user: updated } });
   } catch (err) {
     console.error('[Admin] update user profile error', err);
@@ -126,16 +225,15 @@ router.patch('/users/:userId/profile', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/users/:userId/subscription - update user subscription
 router.patch('/users/:userId/subscription', async (req, res) => {
   try {
     const { userId } = req.params as { userId: string };
 
     const schema = z.object({
-      status: z.enum(['active', 'inactive', 'trial', 'expired']).optional(),
-      extendByMonths: z.number().min(-120).max(120).optional(), // Extend or reduce by months
-      extendByDays: z.number().min(-3650).max(3650).optional(), // Extend or reduce by days
-      setEndDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), // Set specific end date
+      status:         z.enum(['active', 'inactive', 'trial', 'expired']).optional(),
+      extendByMonths: z.number().min(-120).max(120).optional(),
+      extendByDays:   z.number().min(-3650).max(3650).optional(),
+      setEndDate:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     });
 
     const parsed = schema.safeParse(req.body ?? {});
@@ -143,58 +241,41 @@ router.patch('/users/:userId/subscription', async (req, res) => {
       return res.status(400).json({ ok: false, error: { message: 'Invalid subscription data', details: parsed.error.errors } });
     }
 
-    const user = await User.findById(userId).select('subscription');
+    const user = await User.findById(userId).select('activeSubscriptionId');
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
 
-    const update: Record<string, any> = {};
-    
-    // Handle date modifications first
-    if (parsed.data.setEndDate) {
-      // Set specific end date
-      const newEndDate = new Date(parsed.data.setEndDate);
-      update['subscription.endDate'] = newEndDate;
-      
-      // Auto-activate if new end date is in the future
-      const now = new Date();
-      if (newEndDate > now && user.subscription?.status === 'expired') {
-        update['subscription.status'] = 'active';
-      }
-    } else if (parsed.data.extendByMonths !== undefined || parsed.data.extendByDays !== undefined) {
-      // Extend or reduce from current end date
-      const currentEnd = user.subscription?.endDate ? new Date(user.subscription.endDate) : new Date();
-      
-      if (parsed.data.extendByMonths) {
-        currentEnd.setMonth(currentEnd.getMonth() + parsed.data.extendByMonths);
-      }
-      
-      if (parsed.data.extendByDays) {
-        currentEnd.setDate(currentEnd.getDate() + parsed.data.extendByDays);
-      }
-      
-      update['subscription.endDate'] = currentEnd;
-      
-      // Auto-activate if new end date is in the future
-      const now = new Date();
-      if (currentEnd > now && user.subscription?.status === 'expired') {
-        update['subscription.status'] = 'active';
-      }
-      
-      // Recalculate duration if we have a start date
-      if (user.subscription?.startDate) {
-        const startDate = new Date(user.subscription.startDate);
-        const monthsDiff = (currentEnd.getFullYear() - startDate.getFullYear()) * 12 + 
-                          (currentEnd.getMonth() - startDate.getMonth());
-        update['subscription.durationMonths'] = Math.max(0, monthsDiff);
-      }
-    }
-    
-    // Update status if explicitly provided (overrides auto-activation)
+    const sub = await Subscription.findById(user.activeSubscriptionId);
+    if (!sub) return res.status(404).json({ ok: false, error: { message: 'No subscription found for this user' } });
+
+    // Block manual status changes if subscription has a received payment
     if (parsed.data.status) {
-      update['subscription.status'] = parsed.data.status;
+      const hasReceivedPayment = await Payment.exists({ subscriptionId: sub._id, paymentStatus: 'received' });
+      if (hasReceivedPayment && sub.status === 'active') {
+        return res.status(409).json({
+          ok: false,
+          error: { message: 'Cannot manually change status — subscription has a received payment. It will auto-expire on the end date.' },
+        });
+      }
     }
 
-    const updated = await User.findByIdAndUpdate(userId, { $set: update }, { new: true }).select('name email role subscription');
-    return res.json({ ok: true, data: { user: updated } });
+    const now = new Date();
+
+    if (parsed.data.setEndDate) {
+      const newEnd = new Date(parsed.data.setEndDate);
+      sub.endDate = newEnd;
+      if (newEnd > now && sub.status === 'expired') sub.status = 'active';
+    } else if (parsed.data.extendByMonths !== undefined || parsed.data.extendByDays !== undefined) {
+      const currentEnd = new Date(sub.endDate);
+      if (parsed.data.extendByMonths) currentEnd.setMonth(currentEnd.getMonth() + parsed.data.extendByMonths);
+      if (parsed.data.extendByDays)   currentEnd.setDate(currentEnd.getDate() + parsed.data.extendByDays);
+      sub.endDate = currentEnd;
+      if (currentEnd > now && sub.status === 'expired') sub.status = 'active';
+    }
+
+    if (parsed.data.status) sub.status = parsed.data.status as any;
+
+    await sub.save();
+    return res.json({ ok: true, data: { subscription: sub } });
   } catch (err) {
     console.error('[Admin] update subscription error', err);
     return res.status(500).json({ ok: false, error: { message: 'Failed to update subscription' } });
@@ -202,13 +283,17 @@ router.patch('/users/:userId/subscription', async (req, res) => {
 });
 
 // POST /api/admin/users - create a new user (role=user)
-router.post('/users', async (req, res) => {
+// Accepts either planId (preferred) or subscriptionDurationMonths (legacy fallback)
+router.post('/users', async (req: any, res: any) => {
   try {
     const schema = z.object({
       name: z.string().min(2, 'Name must be at least 2 characters'),
       email: z.string().email('Invalid email address'),
       password: z.string().min(6, 'Password must be at least 6 characters'),
-      subscriptionDurationMonths: z.number().min(1).max(60),
+      mobile: z.string().optional(),
+      paymentReceived: z.boolean().optional(),
+      planId: z.string().optional(),
+      subscriptionDurationMonths: z.number().min(1).max(60).optional(),
       profile: z.object({
         age: z.number({ required_error: 'Age is required' }).min(10, 'Age must be at least 10').max(100, 'Age must be under 100'),
         weight: z.number({ required_error: 'Weight is required' }).min(20, 'Weight must be at least 20 kg').max(300),
@@ -223,7 +308,10 @@ router.post('/users', async (req, res) => {
           weeklyBudget: z.number().min(0).optional(),
         }),
       }),
+    }).refine(d => d.planId || d.subscriptionDurationMonths, {
+      message: 'Either planId or subscriptionDurationMonths is required',
     });
+
     const parsed = schema.safeParse(req.body);
     if (!parsed.success) {
       const first = parsed.error.errors[0];
@@ -231,46 +319,127 @@ router.post('/users', async (req, res) => {
       const msg = first.message;
       return res.status(400).json({ ok: false, error: { message: `${field ? field + ': ' : ''}${msg}`, details: parsed.error.errors } });
     }
-    const { name, email, password, subscriptionDurationMonths, profile } = parsed.data;
+    const { name, email, password, mobile, paymentReceived = true, planId, subscriptionDurationMonths, profile } = parsed.data;
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ ok: false, error: { message: 'Email already registered' } });
 
     const passwordHash = await hashPassword(password);
-    
-    // Calculate subscription dates
     const startDate = new Date();
     const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + subscriptionDurationMonths);
-    
+
+    let subPlan: any = null;
+    if (planId) {
+      subPlan = await SubscriptionPlan.findById(planId).lean();
+      if (!subPlan || !subPlan.isActive) return res.status(400).json({ ok: false, error: { message: 'Subscription plan not found or inactive' } });
+      endDate.setDate(endDate.getDate() + subPlan.durationDays);
+    } else {
+      endDate.setMonth(endDate.getMonth() + subscriptionDurationMonths!);
+    }
+
     const user = await User.create({
       name,
       email,
       passwordHash,
       role: 'user',
+      ...(mobile ? { mobile } : {}),
       profile: {
-        age: profile.age,
-        weight: profile.weight,
-        height: profile.height,
-        gender: profile.gender,
-        activityLevel: profile.activityLevel,
-        goals: profile.goals,
+        age:             profile.age,
+        weight:          profile.weight,
+        height:          profile.height,
+        gender:          profile.gender,
+        activityLevel:   profile.activityLevel,
+        goals:           profile.goals,
         experienceLevel: profile.experienceLevel,
         dietPreferences: profile.dietPreferences,
       },
-      subscription: {
-        plan: 'free',
-        status: 'active',
-        startDate,
-        endDate,
-        durationMonths: subscriptionDurationMonths
-      },
     });
 
-    return res.status(201).json({ ok: true, data: { user: { id: user._id, name: user.name, email: user.email, role: user.role, subscription: user.subscription } } });
+    // Create Subscription document
+    const sub = await Subscription.create({
+      userId:         user._id,
+      planId:         subPlan ? subPlan._id : undefined,
+      planName:       subPlan ? subPlan.name : 'Manual',
+      price:          subPlan ? (subPlan as any).price : 0,
+      features:       subPlan ? (subPlan as any).features : { aiWorkoutPlan: false, aiDietPlan: false, leaveRequests: true, progressTracking: true },
+      status:         'active',
+      startDate,
+      endDate,
+      durationMonths: subPlan ? Math.round((subPlan as any).durationDays / 30) : (subscriptionDurationMonths ?? 1),
+      assignedBy:     req.user?.userId,
+    });
+
+    await User.findByIdAndUpdate(user._id, { activeSubscriptionId: sub._id });
+
+    // Record a payment linked to this subscription
+    let payment = null;
+    if (subPlan) {
+      payment = await Payment.create({
+        userId:         user._id,
+        planId:         subPlan._id,
+        subscriptionId: sub._id,
+        planSnapshot:   { name: (subPlan as any).name, price: (subPlan as any).price, durationDays: (subPlan as any).durationDays },
+        amount:         (subPlan as any).price,
+        method:         'cash',
+        paymentStatus:  paymentReceived ? 'received' : 'pending',
+        recordedBy:     req.user?.userId,
+      });
+      // Link payment back to subscription
+      await Subscription.findByIdAndUpdate(sub._id, { paymentId: payment._id });
+    }
+
+    // Auto-create plan request if plan includes AI workout or AI diet
+    if (subPlan && ((subPlan as any).features?.aiWorkoutPlan || (subPlan as any).features?.aiDietPlan)) {
+      const planTypes: Array<'workout' | 'diet'> = [];
+      if ((subPlan as any).features.aiWorkoutPlan) planTypes.push('workout');
+      if ((subPlan as any).features.aiDietPlan)    planTypes.push('diet');
+      await PlanRequest.create({
+        userId:      user._id,
+        checkIn:     { currentWeight: profile.weight },
+        planTypes,
+        status:      'pending',
+        requestedAt: new Date(),
+      });
+    }
+
+    return res.status(201).json({ ok: true, data: { user: { id: user._id, name: user.name, email: user.email, role: user.role, subscription: sub } } });
   } catch (err) {
     console.error('[Admin] Create user error', err);
     res.status(500).json({ ok: false, error: { message: 'Failed to create user' } });
+  }
+});
+
+// GET /api/admin/users/:userId - fetch single user details
+router.get('/users/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params as { userId: string };
+    const user = await User.findById(userId)
+      .select('name email role createdAt profile gymStatus leftAt leftReason assignedTrainerId activeSubscriptionId')
+      .populate('activeSubscriptionId')
+      .lean();
+    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+    if (user) (user as any).subscription = (user as any).activeSubscriptionId;
+    res.json({ ok: true, data: { user } });
+  } catch (err) {
+    console.error('[Admin] get user error', err);
+    res.status(500).json({ ok: false, error: { message: 'Failed to fetch user' } });
+  }
+});
+
+// GET /api/admin/users/:userId/subscriptions — full subscription history
+router.get('/users/:userId/subscriptions', async (req, res) => {
+  try {
+    const { userId } = req.params as { userId: string };
+    const subscriptions = await Subscription.find({ userId })
+      .sort({ startDate: -1 })
+      .populate('planId', 'name color price')
+      .populate('assignedBy', 'name email')
+      .populate('paymentId', 'paymentStatus amount method paidAt')
+      .lean();
+    res.json({ ok: true, data: { subscriptions } });
+  } catch (err) {
+    console.error('[Admin] subscription history error', err);
+    res.status(500).json({ ok: false, error: { message: 'Failed to fetch subscription history' } });
   }
 });
 
@@ -328,12 +497,30 @@ router.delete('/users/:userId/notes/:noteId', async (req, res) => {
 // GET /api/admin/metrics - basic counts for dashboard
 router.get('/metrics', async (_req, res) => {
   try {
-    const usersCount = await User.countDocuments();
-    const workoutPlansCount = await WorkoutPlan.countDocuments();
-    const activeWorkoutPlans = await WorkoutPlan.countDocuments({ status: 'active' });
-    const dietPlansCount = await DietPlan.countDocuments();
+    const thisMonthStart = new Date(); thisMonthStart.setDate(1); thisMonthStart.setHours(0, 0, 0, 0);
 
-    res.json({ ok: true, data: { usersCount, workoutPlansCount, activeWorkoutPlans, dietPlansCount } });
+    const [
+      usersCount, workoutPlansCount, activeWorkoutPlans, dietPlansCount,
+      activeSubscriptions,
+      revenueAgg, pendingAgg, pendingCount,
+    ] = await Promise.all([
+      User.countDocuments(),
+      WorkoutPlan.countDocuments(),
+      WorkoutPlan.countDocuments({ status: 'active' }),
+      DietPlan.countDocuments(),
+      Subscription.countDocuments({ status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }),
+      Payment.aggregate([{ $match: { paymentStatus: 'received', paidAt: { $gte: thisMonthStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Payment.aggregate([{ $match: { paymentStatus: 'pending' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Payment.countDocuments({ paymentStatus: 'pending' }),
+    ]);
+
+    res.json({ ok: true, data: {
+      usersCount, workoutPlansCount, activeWorkoutPlans, dietPlansCount,
+      activeSubscriptions,
+      revenueThisMonth: revenueAgg[0]?.total || 0,
+      pendingAmount:    pendingAgg[0]?.total || 0,
+      pendingCount,
+    }});
   } catch (err) {
     console.error('[Admin] Error metrics', err);
     res.status(500).json({ ok: false, error: { message: 'Failed to fetch metrics' } });
@@ -372,23 +559,14 @@ router.post('/users/:userId/generate-workout-cycle', planGenerationLimiter, aiOp
     const additionalInstructions = instructionParts.length ? instructionParts.join('\n') : undefined;
 
     // Validate user exists and check subscription
-    const user = await User.findById(userId).select('_id subscription');
+    const [user, activeSub] = await Promise.all([
+      User.findById(userId).select('_id').lean(),
+      Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean(),
+    ]);
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
-
-    // Check if user's subscription is active
-    if (user.subscription) {
-      const now = new Date();
-      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
-      
-      if (!endDate || now > endDate || user.subscription.status === 'expired') {
-        return res.status(403).json({ 
-          ok: false, 
-          error: { 
-            message: 'Cannot generate workout plan for user with expired subscription',
-            code: 'USER_SUBSCRIPTION_EXPIRED'
-          } 
-        });
-      }
+    if (!activeSub) return res.status(403).json({ ok: false, error: { message: 'Cannot generate workout plan for user with expired subscription', code: 'USER_SUBSCRIPTION_EXPIRED' } });
+    if (!activeSub.features?.aiWorkoutPlan) {
+      return res.status(403).json({ ok: false, error: { message: 'User\'s subscription plan does not include AI Workout Plan generation.', code: 'FEATURE_NOT_INCLUDED' } });
     }
 
     // Check overlap
@@ -466,23 +644,14 @@ router.post('/users/:userId/generate-diet', async (req, res) => {
     const targetDate = new Date(date);
 
     // Validate user exists and check subscription
-    const user = await User.findById(userId).select('_id subscription');
+    const [user, activeSub] = await Promise.all([
+      User.findById(userId).select('_id').lean(),
+      Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean(),
+    ]);
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
-
-    // Check if user's subscription is active
-    if (user.subscription) {
-      const now = new Date();
-      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
-      
-      if (!endDate || now > endDate || user.subscription.status === 'expired') {
-        return res.status(403).json({ 
-          ok: false, 
-          error: { 
-            message: 'Cannot generate diet plan for user with expired subscription',
-            code: 'USER_SUBSCRIPTION_EXPIRED'
-          } 
-        });
-      }
+    if (!activeSub) return res.status(403).json({ ok: false, error: { message: 'Cannot generate diet plan for user with expired subscription', code: 'USER_SUBSCRIPTION_EXPIRED' } });
+    if (!activeSub.features?.aiDietPlan) {
+      return res.status(403).json({ ok: false, error: { message: 'User\'s subscription plan does not include AI Diet Plan generation.', code: 'FEATURE_NOT_INCLUDED' } });
     }
 
     // Check if plan exists
@@ -529,23 +698,14 @@ router.post('/users/:userId/generate-diet-daily', planGenerationLimiter, aiOpera
       : undefined;
 
     // Validate user exists and check subscription
-    const user = await User.findById(userId).select('_id subscription');
+    const [user, activeSub] = await Promise.all([
+      User.findById(userId).select('_id').lean(),
+      Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean(),
+    ]);
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
-
-    // Check if user's subscription is active
-    if (user.subscription) {
-      const now = new Date();
-      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
-      
-      if (!endDate || now > endDate || user.subscription.status === 'expired') {
-        return res.status(403).json({ 
-          ok: false, 
-          error: { 
-            message: 'Cannot generate diet plan for user with expired subscription',
-            code: 'USER_SUBSCRIPTION_EXPIRED'
-          } 
-        });
-      }
+    if (!activeSub) return res.status(403).json({ ok: false, error: { message: 'Cannot generate diet plan for user with expired subscription', code: 'USER_SUBSCRIPTION_EXPIRED' } });
+    if (!activeSub.features?.aiDietPlan) {
+      return res.status(403).json({ ok: false, error: { message: 'User\'s subscription plan does not include AI Diet Plan generation.', code: 'FEATURE_NOT_INCLUDED' } });
     }
 
     const today = new Date();
@@ -619,18 +779,14 @@ router.post('/users/:userId/generate-diet-weekly', planGenerationLimiter, aiOper
     ].filter(Boolean);
     const dietAdditionalInstructions = dietInstructionParts.length ? dietInstructionParts.join('\n') : undefined;
 
-    const user = await User.findById(userId).select('_id subscription');
+    const [user, activeSub] = await Promise.all([
+      User.findById(userId).select('_id').lean(),
+      Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean(),
+    ]);
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
-
-    if (user.subscription) {
-      const now = new Date();
-      const endDate = user.subscription.endDate ? new Date(user.subscription.endDate) : null;
-      if (!endDate || now > endDate || user.subscription.status === 'expired') {
-        return res.status(403).json({
-          ok: false,
-          error: { message: 'Cannot generate diet plan for user with expired subscription', code: 'USER_SUBSCRIPTION_EXPIRED' }
-        });
-      }
+    if (!activeSub) return res.status(403).json({ ok: false, error: { message: 'Cannot generate diet plan for user with expired subscription', code: 'USER_SUBSCRIPTION_EXPIRED' } });
+    if (!activeSub.features?.aiDietPlan) {
+      return res.status(403).json({ ok: false, error: { message: 'User\'s subscription plan does not include AI Diet Plan generation.', code: 'FEATURE_NOT_INCLUDED' } });
     }
 
     // Compute Monday of the current week
@@ -683,14 +839,23 @@ router.post('/users/:userId/generate-diet-weekly', planGenerationLimiter, aiOper
 router.get('/users/:userId/workouts', async (req, res) => {
   try {
     const { userId } = req.params as { userId: string };
+    const { page = '1', limit = '5' } = req.query as Record<string, string>;
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+
     const user = await User.findById(userId).select('_id');
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
 
-    const workoutPlans = await WorkoutPlan.find({ userId })
-      .sort({ startDate: -1 })
-      .lean();
+    const [workoutPlans, total] = await Promise.all([
+      WorkoutPlan.find({ userId })
+        .sort({ startDate: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      WorkoutPlan.countDocuments({ userId }),
+    ]);
 
-    return res.json({ ok: true, data: { workoutPlans, count: workoutPlans.length } });
+    return res.json({ ok: true, data: { workoutPlans, total, page: pageNum, totalPages: Math.ceil(total / limitNum) } });
   } catch (err) {
     console.error('[Admin] list user workouts error', err);
     return res.status(500).json({ ok: false, error: { message: 'Failed to list workout plans' } });
@@ -714,14 +879,23 @@ router.get('/workouts/:planId', async (req, res) => {
 router.get('/users/:userId/diet', async (req, res) => {
   try {
     const { userId } = req.params as { userId: string };
+    const { page = '1', limit = '5' } = req.query as Record<string, string>;
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+
     const user = await User.findById(userId).select('_id');
     if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
 
-    const dietPlans = await DietPlan.find({ userId })
-      .sort({ date: -1 })
-      .lean();
+    const [dietPlans, total] = await Promise.all([
+      DietPlan.find({ userId })
+        .sort({ date: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      DietPlan.countDocuments({ userId }),
+    ]);
 
-    return res.json({ ok: true, data: { dietPlans, count: dietPlans.length } });
+    return res.json({ ok: true, data: { dietPlans, total, page: pageNum, totalPages: Math.ceil(total / limitNum) } });
   } catch (err) {
     console.error('[Admin] list user diet error', err);
     return res.status(500).json({ ok: false, error: { message: 'Failed to list diet plans' } });
@@ -800,15 +974,14 @@ router.patch('/diet/:planId', async (req, res) => {
 
     const schema = z.object({
       name: z.string().min(1).optional(),
-      date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-      dailyCalories: z.number().min(0).optional(),
-      macros: z
+      weekStartDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+      avgDailyCalories: z.number().min(0).optional(),
+      avgMacros: z
         .object({ protein: z.number().min(0), carbs: z.number().min(0), fats: z.number().min(0) })
         .partial()
         .optional(),
-      meals: z.any().optional(), // accept structure from client
+      days: z.any().optional(),
       notes: z.string().max(1000).optional(),
-      generatedFrom: z.enum(['manual', 'ai', 'auto-daily']).optional(),
     });
 
     const parsed = schema.safeParse(req.body);
@@ -817,7 +990,7 @@ router.patch('/diet/:planId', async (req, res) => {
     }
 
     const update: any = { ...parsed.data };
-    if (parsed.data.date) update.date = new Date(parsed.data.date);
+    if (parsed.data.weekStartDate) update.weekStartDate = new Date(parsed.data.weekStartDate);
 
     const updated = await DietPlan.findByIdAndUpdate(planId, { $set: update }, { new: true });
     if (!updated) return res.status(404).json({ ok: false, error: { message: 'Diet plan not found' } });
@@ -951,9 +1124,9 @@ router.get('/users/:userId/reports/diet/monthly/:year/:month', async (req, res) 
       const progressLogs = await ProgressLog.find({ userId, date: { $gte: startDate, $lte: endDate } }).lean();
       const totalDaysLogged = progressLogs.filter(l => l.meals && l.meals.length > 0).length;
       const totalCalories = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.calories || 0), 0) || 0), 0);
-      const totalProtein = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.macros?.p || 0), 0) || 0), 0);
-      const totalCarbs = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.macros?.c || 0), 0) || 0), 0);
-      const totalFats = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.macros?.f || 0), 0) || 0), 0);
+      const totalProtein = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.macros?.protein || 0), 0) || 0), 0);
+      const totalCarbs = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.macros?.carbs || 0), 0) || 0), 0);
+      const totalFats = progressLogs.reduce((s, l) => s + (l.meals?.reduce((ms, meal) => ms + (meal.macros?.fats || 0), 0) || 0), 0);
       const avgDailyCalories = totalDaysLogged > 0 ? Math.round(totalCalories / totalDaysLogged) : 0;
       const avgPlanned = dietPlans.length > 0 ? dietPlans.reduce((s, p) => s + ((p as any).avgDailyCalories || (p as any).dailyCalories || 0), 0) / dietPlans.length : 0;
       const adherenceScore = avgPlanned > 0 ? Math.min(100, Math.round((avgDailyCalories / avgPlanned) * 100)) : 0;
@@ -990,11 +1163,11 @@ router.get('/bulk/status', async (_req, res) => {
     const now = new Date();
     const today = new Date(); today.setHours(0, 0, 0, 0);
 
-    const activeUsers = await User.find({
-      role: 'user',
-      'subscription.status': { $in: ['active', 'trial'] },
-      'subscription.endDate': { $gt: now },
-    }).select('_id').lean();
+    const activeUserIds = await Subscription.distinct('userId', {
+      status: { $in: ['active', 'trial'] },
+      endDate: { $gt: now },
+    });
+    const activeUsers = await User.find({ _id: { $in: activeUserIds }, role: 'user' }).select('_id').lean();
 
     const activeIds = activeUsers.map(u => u._id);
 
@@ -1021,11 +1194,11 @@ router.post('/bulk/generate-diet', aiOperationLimiter, async (_req, res) => {
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1);
 
-    const activeUsers = await User.find({
-      role: 'user',
-      'subscription.status': { $in: ['active', 'trial'] },
-      'subscription.endDate': { $gt: now },
-    }).select('_id').lean();
+    const bulkActiveIds = await Subscription.distinct('userId', {
+      status: { $in: ['active', 'trial'] },
+      endDate: { $gt: now },
+    });
+    const activeUsers = await User.find({ _id: { $in: bulkActiveIds }, role: 'user' }).select('_id').lean();
 
     const activeIds = activeUsers.map(u => u._id);
     const usersWithDiet = await DietPlan.distinct('userId', { userId: { $in: activeIds }, date: { $gte: today, $lt: tomorrow } });
@@ -1053,7 +1226,6 @@ router.post('/bulk/generate-diet', aiOperationLimiter, async (_req, res) => {
 });
 
 // ── PLAN REQUESTS ──────────────────────────────────────────────────────────
-import PlanRequest from '../models/PlanRequest';
 import LeaveRequest from '../models/LeaveRequest';
 import Session from '../models/Session';
 
@@ -1071,7 +1243,7 @@ router.get('/plan-requests', async (req: any, res) => {
     }
 
     const requests = await PlanRequest.find({ status, ...userFilter })
-      .populate('userId', 'name email profile subscription assignedTrainerId')
+      .populate('userId', 'name email profile assignedTrainerId')
       .sort({ requestedAt: -1 })
       .limit(50)
       .lean();
@@ -1355,6 +1527,34 @@ router.patch('/users/:userId/trainer', async (req, res) => {
   }
 });
 
+// PATCH /api/admin/users/:userId/gym-status - manually mark member as left or reactivate
+router.patch('/users/:userId/gym-status', async (req, res) => {
+  try {
+    const { userId } = req.params as { userId: string };
+    const schema = z.object({
+      gymStatus: z.enum(['member', 'left']),
+      leftReason: z.enum(['moved', 'health', 'cost', 'other']).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: { message: 'Invalid data' } });
+
+    const update: Record<string, any> = { gymStatus: parsed.data.gymStatus };
+    if (parsed.data.gymStatus === 'left') {
+      update.leftAt = new Date();
+      update.leftReason = parsed.data.leftReason || 'other';
+    } else {
+      update.$unset = { leftAt: '', leftReason: '' };
+      delete update.leftAt; delete update.leftReason;
+    }
+
+    const user = await User.findByIdAndUpdate(userId, update, { new: true }).lean();
+    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+    return res.json({ ok: true, data: { user } });
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: { message: 'Failed to update gym status' } });
+  }
+});
+
 // PATCH /api/admin/users/:userId/workout-plans/:planId - edit a workout plan day/exercises
 router.patch('/users/:userId/workout-plans/:planId', async (req, res) => {
   try {
@@ -1497,6 +1697,615 @@ router.delete('/announcements/:id', async (req: any, res: any) => {
     if (result.deletedCount === 0) return res.status(404).json({ ok: false, error: { message: 'Announcement not found' } });
     res.json({ ok: true, data: { deleted: true } });
   } catch { res.status(500).json({ ok: false, error: { message: 'Failed to delete announcement' } }); }
+});
+
+// ─── SUBSCRIPTION PLANS ──────────────────────────────────────────────────────
+
+// GET /api/admin/subscription-plans
+router.get('/subscription-plans', async (_req, res) => {
+  try {
+    const [plans, counts] = await Promise.all([
+      SubscriptionPlan.find().sort({ price: 1 }).lean(),
+      Subscription.aggregate([
+        { $match: { planId: { $exists: true }, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } } },
+        { $group: { _id: '$planId', count: { $sum: 1 } } },
+      ]),
+    ]);
+    const countMap: Record<string, number> = {};
+    for (const c of counts) countMap[String(c._id)] = c.count;
+    const plansWithCounts = plans.map(p => ({ ...p, activeUserCount: countMap[String((p as any)._id)] || 0 }));
+    res.json({ ok: true, data: { plans: plansWithCounts } });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to fetch plans' } }); }
+});
+
+// POST /api/admin/subscription-plans
+router.post('/subscription-plans', async (req, res) => {
+  try {
+    const schema = z.object({
+      name:         z.string().min(1).max(80),
+      price:        z.number().min(0),
+      durationDays: z.number().int().min(1),
+      features: z.object({
+        aiWorkoutPlan:    z.boolean().default(false),
+        aiDietPlan:       z.boolean().default(false),
+        leaveRequests:    z.boolean().default(true),
+        progressTracking: z.boolean().default(true),
+      }).default({}),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: { message: parsed.error.errors[0].message } });
+    const plan = await SubscriptionPlan.create(parsed.data);
+    res.status(201).json({ ok: true, data: { plan } });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to create plan' } }); }
+});
+
+// PATCH /api/admin/subscription-plans/:id
+router.patch('/subscription-plans/:id', async (req, res) => {
+  try {
+    const schema = z.object({
+      name:         z.string().min(1).max(80).optional(),
+      price:        z.number().min(0).optional(),
+      durationDays: z.number().int().min(1).optional(),
+      features: z.object({
+        aiWorkoutPlan:    z.boolean(),
+        aiDietPlan:       z.boolean(),
+        leaveRequests:    z.boolean(),
+        progressTracking: z.boolean(),
+      }).partial().optional(),
+      color:    z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      isActive: z.boolean().optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: { message: parsed.error.errors[0].message } });
+    const plan = await SubscriptionPlan.findByIdAndUpdate(req.params.id, { $set: parsed.data }, { new: true });
+    if (!plan) return res.status(404).json({ ok: false, error: { message: 'Plan not found' } });
+    // Sync updated features to all active Subscription docs currently on this plan
+    if (parsed.data.features) {
+      await Subscription.updateMany(
+        { planId: req.params.id, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } },
+        { $set: { features: parsed.data.features } },
+      );
+    }
+    res.json({ ok: true, data: { plan } });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to update plan' } }); }
+});
+
+// DELETE /api/admin/subscription-plans/:id  (hard delete — blocked if active users exist)
+router.delete('/subscription-plans/:id', async (req, res) => {
+  try {
+    const activeCount = await Subscription.countDocuments({
+      planId: req.params.id,
+      status: { $in: ['active', 'trial'] },
+      endDate: { $gt: new Date() },
+    });
+    if (activeCount > 0) {
+      return res.status(409).json({
+        ok: false,
+        error: { message: `Cannot delete: ${activeCount} active member${activeCount !== 1 ? 's' : ''} are on this plan. Deactivate it instead.` },
+      });
+    }
+    const plan = await SubscriptionPlan.findByIdAndDelete(req.params.id);
+    if (!plan) return res.status(404).json({ ok: false, error: { message: 'Plan not found' } });
+    res.json({ ok: true, data: { deleted: true } });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to delete plan' } }); }
+});
+
+// ─── PAYMENTS ────────────────────────────────────────────────────────────────
+
+// GET /api/admin/payments?userId=&paymentStatus=&method=&page=&limit=
+router.get('/payments', async (req, res) => {
+  try {
+    const { userId, paymentStatus, method, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const filter: any = {};
+    if (userId) filter.userId = userId;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    if (method) filter.method = method;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [payments, total] = await Promise.all([
+      Payment.find(filter)
+        .sort({ paidAt: -1 })
+        .skip(skip)
+        .limit(parseInt(limit))
+        .populate('userId', 'name email')
+        .populate('planId', 'name color')
+        .lean(),
+      Payment.countDocuments(filter),
+    ]);
+    res.json({ ok: true, data: { payments, total, page: parseInt(page) } });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to fetch payments' } }); }
+});
+
+// GET /api/admin/users/:userId/payments
+router.get('/users/:userId/payments', async (req, res) => {
+  try {
+    const payments = await Payment.find({ userId: req.params.userId })
+      .sort({ paidAt: -1 })
+      .populate('planId', 'name color')
+      .lean();
+    res.json({ ok: true, data: { payments } });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to fetch payments' } }); }
+});
+
+// POST /api/admin/payments — record payment and activate/extend user subscription
+router.post('/payments', async (req: any, res: any) => {
+  try {
+    const schema = z.object({
+      userId:        z.string(),
+      planId:        z.string(),
+      amount:        z.number().min(0),
+      method:        z.enum(['cash', 'upi', 'card', 'other']).default('cash'),
+      paymentStatus: z.enum(['received', 'pending']).default('received'),
+      paidAt:        z.string().optional(),
+      note:          z.string().max(500).optional(),
+    });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ ok: false, error: { message: parsed.error.errors[0].message } });
+
+    const { userId, planId, amount, method, paymentStatus, paidAt, note } = parsed.data;
+
+    const [user, plan] = await Promise.all([
+      User.findById(userId),
+      SubscriptionPlan.findById(planId).lean(),
+    ]);
+    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+    if (!plan || !(plan as any).isActive) return res.status(400).json({ ok: false, error: { message: 'Plan not found or inactive' } });
+
+    // Derive subscription status from the plan's planType — client has no say
+    const subscriptionStatus: 'active' | 'trial' = (plan as any).planType === 'trial' ? 'trial' : 'active';
+
+    // Block if user already has a non-expired active subscription
+    const now = new Date();
+    const existingSub = await Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: now } });
+    if (subscriptionStatus === 'active' && existingSub) {
+      const expiry = new Date(existingSub.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      return res.status(409).json({
+        ok: false,
+        error: { message: `User already has an active subscription until ${expiry}. New plan can only be assigned after it expires.` },
+      });
+    }
+
+    const base = existingSub?.endDate && new Date(existingSub.endDate) > now
+      ? new Date(existingSub.endDate)
+      : now;
+    const newEndDate = new Date(base);
+    newEndDate.setDate(newEndDate.getDate() + (plan as any).durationDays);
+
+    // Create new Subscription document
+    const sub = await Subscription.create({
+      userId,
+      planId:         (plan as any)._id,
+      planName:       (plan as any).name,
+      price:          Math.max(0, amount),
+      features:       (plan as any).features,
+      status:         subscriptionStatus,
+      startDate:      now,
+      endDate:        newEndDate,
+      durationMonths: Math.round((plan as any).durationDays / 30),
+      assignedBy:     req.user?.userId,
+    });
+
+    // Point user to new subscription; re-activate if they were marked as left
+    const userUpdate: any = { activeSubscriptionId: sub._id };
+    if ((user as any).gymStatus === 'left') {
+      userUpdate.gymStatus  = 'member';
+      userUpdate.leftAt     = null;
+      userUpdate.leftReason = null;
+    }
+    await User.findByIdAndUpdate(userId, { $set: userUpdate });
+
+    // Trial plans: no payment record
+    if (subscriptionStatus === 'trial') {
+      return res.status(201).json({ ok: true, data: { payment: null, subscription: sub } });
+    }
+
+    // Paid plans: create Payment linked to the new Subscription
+    const payment = await Payment.create({
+      userId,
+      planId:         planId,
+      subscriptionId: sub._id,
+      planSnapshot:   { name: (plan as any).name, price: (plan as any).price, durationDays: (plan as any).durationDays },
+      amount:         Math.max(0, amount),
+      method,
+      paymentStatus,
+      paidAt:         paidAt ? new Date(paidAt) : now,
+      note,
+      recordedBy:     req.user?.userId,
+    });
+
+    // Link payment back to subscription
+    await Subscription.findByIdAndUpdate(sub._id, { paymentId: payment._id });
+
+    res.status(201).json({ ok: true, data: { payment, subscription: sub } });
+  } catch (err) {
+    console.error('[Admin] Record payment error', err);
+    res.status(500).json({ ok: false, error: { message: 'Failed to record payment' } });
+  }
+});
+
+// PATCH /api/admin/payments/:id/mark-received — mark a pending payment as received
+router.patch('/payments/:id/mark-received', async (req, res) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) return res.status(404).json({ ok: false, error: { message: 'Payment not found' } });
+    if ((payment as any).paymentStatus !== 'pending') return res.status(400).json({ ok: false, error: { message: 'Payment is not pending' } });
+    (payment as any).paymentStatus = 'received';
+    await payment.save();
+    return res.json({ ok: true, data: { payment } });
+  } catch { return res.status(500).json({ ok: false, error: { message: 'Failed to mark payment as received' } }); }
+});
+
+// PATCH /api/admin/payments/:id/cancel — void a pending payment
+router.patch('/payments/:id/cancel', async (req, res) => {
+  try {
+    const payment = await Payment.findById(req.params.id);
+    if (!payment) return res.status(404).json({ ok: false, error: { message: 'Payment not found' } });
+    if ((payment as any).paymentStatus !== 'pending') return res.status(400).json({ ok: false, error: { message: 'Only pending payments can be cancelled' } });
+    (payment as any).paymentStatus = 'cancelled';
+    await payment.save();
+    res.json({ ok: true });
+  } catch { res.status(500).json({ ok: false, error: { message: 'Failed to cancel payment' } }); }
+});
+
+// GET /api/admin/payments/stats — revenue trend, plan distribution, method breakdown
+router.get('/payments/stats', async (_req, res) => {
+  try {
+    const now = new Date();
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const twelveMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+
+    // Monthly revenue trend: last 12 months (received only)
+    const monthlyTrend = await Payment.aggregate([
+      { $match: { paymentStatus: 'received', paidAt: { $gte: twelveMonthsAgo } } },
+      {
+        $group: {
+          _id: { year: { $year: '$paidAt' }, month: { $month: '$paidAt' } },
+          revenue: { $sum: '$amount' },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { '_id.year': 1, '_id.month': 1 } },
+    ]);
+
+    // Build full 12-month array (fill gaps with 0)
+    const trendMap: Record<string, { revenue: number; count: number }> = {};
+    for (const r of monthlyTrend) {
+      const key = `${r._id.year}-${String(r._id.month).padStart(2, '0')}`;
+      trendMap[key] = { revenue: r.revenue, count: r.count };
+    }
+    const revenueByMonth: { month: string; revenue: number; count: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const label = d.toLocaleString('en-IN', { month: 'short', year: '2-digit' });
+      revenueByMonth.push({ month: label, revenue: trendMap[key]?.revenue || 0, count: trendMap[key]?.count || 0 });
+    }
+
+    // Plan distribution: received vs pending revenue per plan
+    const [revenueByPlanAgg, allPlans] = await Promise.all([
+      Payment.aggregate([
+        { $match: { paymentStatus: { $in: ['received', 'pending'] } } },
+        {
+          $group: {
+            _id: { plan: { $ifNull: ['$planSnapshot.name', '$planName'] }, status: '$paymentStatus' },
+            amount: { $sum: '$amount' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      SubscriptionPlan.find().select('name color').lean(),
+    ]);
+
+    const planColorMap: Record<string, string> = {};
+    for (const p of allPlans) planColorMap[(p as any).name] = (p as any).color || '#6B7280';
+
+    const planMap: Record<string, { received: number; pending: number; transactions: number }> = {};
+    for (const r of revenueByPlanAgg) {
+      const planName: string = r._id.plan || 'Unknown';
+      if (!planMap[planName]) planMap[planName] = { received: 0, pending: 0, transactions: 0 };
+      if (r._id.status === 'received') planMap[planName].received += r.amount;
+      else if (r._id.status === 'pending') planMap[planName].pending += r.amount;
+      planMap[planName].transactions += r.count;
+    }
+    const planDistribution = Object.entries(planMap)
+      .map(([name, data]) => ({
+        name,
+        received: data.received,
+        pending: data.pending,
+        total: data.received + data.pending,
+        transactions: data.transactions,
+        color: planColorMap[name] || '#6B7280',
+      }))
+      .sort((a, b) => b.total - a.total);
+
+    // Payment method breakdown (all time)
+    const methodBreakdown = await Payment.aggregate([
+      { $group: { _id: '$method', count: { $sum: 1 }, total: { $sum: '$amount' } } },
+      { $sort: { total: -1 } },
+    ]);
+
+    // Summary totals
+    const [allTimeRevenue, pendingData, pendingCount, mtdRevenue] = await Promise.all([
+      Payment.aggregate([{ $match: { paymentStatus: 'received' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+      Payment.aggregate([{ $match: { paymentStatus: 'pending' } }, { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }]),
+      Payment.countDocuments({ paymentStatus: 'pending' }),
+      Payment.aggregate([{ $match: { paymentStatus: 'received', paidAt: { $gte: thisMonthStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
+    ]);
+
+    res.json({
+      ok: true,
+      data: {
+        summary: {
+          allTimeRevenue: allTimeRevenue[0]?.total || 0,
+          revenueThisMonth: mtdRevenue[0]?.total || 0,
+          pendingAmount: pendingData[0]?.total || 0,
+          pendingCount,
+        },
+        revenueByMonth,
+        planDistribution,
+        methodBreakdown: methodBreakdown.map((m: any) => ({ method: m._id || 'other', count: m.count, total: m.total })),
+      },
+    });
+  } catch (err) {
+    console.error('[Admin] payments/stats error', err);
+    res.status(500).json({ ok: false, error: { message: 'Failed to compute payment stats' } });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GYM SETTINGS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** GET /api/admin/gym-settings */
+router.get('/gym-settings', async (_req, res) => {
+  try {
+    const settings = await (GymSettings as any).getOrCreate();
+    res.json({ ok: true, data: settings });
+  } catch {
+    res.status(500).json({ ok: false, error: { message: 'Failed to fetch settings' } });
+  }
+});
+
+/** PATCH /api/admin/gym-settings */
+router.patch('/gym-settings', async (req, res) => {
+  try {
+    const { attendanceEnabled, autoMarkOutHours, qrTokenExpiryMinutes } = req.body as {
+      attendanceEnabled?: boolean;
+      autoMarkOutHours?: number;
+      qrTokenExpiryMinutes?: number;
+    };
+    const settings = await (GymSettings as any).getOrCreate();
+    if (attendanceEnabled !== undefined) {
+      const wasPreviouslyEnabled = settings.attendanceEnabled;
+      settings.attendanceEnabled = attendanceEnabled;
+      // Record the exact day attendance was enabled (reset if toggled off then on again)
+      if (attendanceEnabled && !wasPreviouslyEnabled) {
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        settings.attendanceEnabledAt = today;
+      } else if (!attendanceEnabled) {
+        settings.attendanceEnabledAt = null;
+      }
+    }
+    if (autoMarkOutHours !== undefined) settings.autoMarkOutHours = Math.min(6, Math.max(1, autoMarkOutHours));
+    if (qrTokenExpiryMinutes !== undefined) settings.qrTokenExpiryMinutes = Math.min(60, Math.max(5, qrTokenExpiryMinutes));
+    await settings.save();
+    res.json({ ok: true, data: settings });
+  } catch {
+    res.status(500).json({ ok: false, error: { message: 'Failed to update settings' } });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ATTENDANCE — QR TOKEN + TODAY OVERVIEW
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/attendance/qr-token
+ * Issues a short-lived JWT that the QR code encodes.
+ * Users scan → browser opens /scan?token=... → POST /api/attendance/mark-in
+ */
+router.get('/attendance/qr-token', async (_req, res) => {
+  try {
+    const settings = await (GymSettings as any).getOrCreate();
+    if (!settings.attendanceEnabled) {
+      return res.status(403).json({ ok: false, error: { message: 'Attendance is not enabled' } });
+    }
+    const expirySeconds = (settings.qrTokenExpiryMinutes ?? 15) * 60;
+    const token = jwt.sign(
+      { type: 'gym-checkin' },
+      process.env.JWT_SECRET!,
+      { expiresIn: expirySeconds },
+    );
+    const appUrl = process.env.APP_URL || 'http://localhost:3000';
+    return res.json({
+      ok: true,
+      data: {
+        token,
+        scanUrl: `${appUrl}/scan?token=${token}`,
+        expiresInMinutes: settings.qrTokenExpiryMinutes,
+      },
+    });
+  } catch {
+    return res.status(500).json({ ok: false, error: { message: 'Failed to generate QR token' } });
+  }
+});
+
+/**
+ * GET /api/admin/attendance/today
+ * Returns all active users with their today's attendance status.
+ * Supports ?sort=name|time&order=asc|desc&status=all|present|absent
+ */
+router.get('/attendance/today', async (req, res) => {
+  try {
+    const settings = await (GymSettings as any).getOrCreate();
+    if (!settings.attendanceEnabled) {
+      return res.json({ ok: true, data: { attendanceEnabled: false, records: [] } });
+    }
+
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+
+    const { sort = 'name', order = 'asc', status = 'all' } = req.query as {
+      sort?: string; order?: string; status?: string;
+    };
+
+    // Get all active subscriber user IDs
+    const activeUserIds = await Subscription.distinct('userId', {
+      status: { $in: ['active', 'trial'] },
+      endDate: { $gt: now },
+    });
+
+    // Fetch users + today's logs in parallel
+    const [users, logs] = await Promise.all([
+      User.find({ _id: { $in: activeUserIds }, role: 'user' })
+        .select('name email')
+        .lean(),
+      ProgressLog.find({ userId: { $in: activeUserIds }, date: { $gte: todayStart, $lte: todayEnd } })
+        .select('userId attendance')
+        .lean(),
+    ]);
+
+    const logMap: Record<string, any> = {};
+    for (const l of logs) logMap[String(l.userId)] = l.attendance;
+
+    let records = users.map((u: any) => {
+      const att = logMap[String(u._id)];
+      const isPresent = att?.markedInAt != null;
+      return {
+        userId: u._id,
+        name: u.name,
+        email: u.email,
+        status: isPresent ? 'present' : 'absent',
+        markedInAt: att?.markedInAt ?? null,
+        markedOutAt: att?.markedOutAt ?? null,
+        durationMinutes: att?.durationMinutes ?? null,
+        currentlyIn: isPresent && !att?.markedOutAt,
+      };
+    });
+
+    // Filter
+    if (status !== 'all') {
+      records = records.filter((r: any) => r.status === status);
+    }
+
+    // Sort
+    records.sort((a: any, b: any) => {
+      let cmp = 0;
+      if (sort === 'time') {
+        const ta = a.markedInAt ? new Date(a.markedInAt).getTime() : 0;
+        const tb = b.markedInAt ? new Date(b.markedInAt).getTime() : 0;
+        cmp = ta - tb;
+      } else {
+        cmp = a.name.localeCompare(b.name);
+      }
+      return order === 'desc' ? -cmp : cmp;
+    });
+
+    const presentCount = records.filter((r: any) => r.status === 'present').length;
+    const absentCount  = records.filter((r: any) => r.status === 'absent').length;
+    const currentlyIn  = records.filter((r: any) => r.currentlyIn).length;
+
+    return res.json({
+      ok: true,
+      data: {
+        attendanceEnabled: true,
+        date: todayStart.toISOString().slice(0, 10),
+        summary: { total: records.length, presentCount, absentCount, currentlyIn },
+        records,
+      },
+    });
+  } catch (err) {
+    console.error('[Admin] attendance/today error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to fetch today attendance' } });
+  }
+});
+
+/**
+ * GET /api/admin/attendance/user/:userId/history?days=60
+ * Returns attendance history for a specific user (admin view).
+ */
+router.get('/attendance/user/:userId/history', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const maxDays = Math.min(parseInt(req.query.days as string) || 60, 90);
+
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const windowFrom = new Date(today); windowFrom.setDate(today.getDate() - maxDays + 1);
+
+    const gymSettings = await (GymSettings as any).getOrCreate();
+    if (!gymSettings.attendanceEnabled) {
+      return res.json({ ok: true, data: { attendanceEnabled: false, records: [], summary: null } });
+    }
+    const midnight = (d: Date) => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+    const anchor = gymSettings.attendanceEnabledAt ? midnight(new Date(gymSettings.attendanceEnabledAt)) : windowFrom;
+    const effectiveFrom = anchor > windowFrom ? anchor : windowFrom;
+
+    const DAY = 86400000;
+    const totalDays = Math.round((today.getTime() - effectiveFrom.getTime()) / DAY) + 1;
+    const dateRange = Array.from({ length: totalDays }, (_, i) =>
+      new Date(today.getTime() - i * DAY).toISOString().slice(0, 10),
+    );
+
+    const [logs, leaves, gymHolidays] = await Promise.all([
+      ProgressLog.find({ userId, date: { $gte: effectiveFrom } }).lean(),
+      LeaveRequest.find({ userId, status: 'approved' }).lean(),
+      GymHoliday.find({ date: { $in: dateRange } }).lean(),
+    ]);
+
+    const attMap = new Map(
+      logs.filter(l => l.attendance?.markedInAt).map(l => [l.date.toISOString().slice(0, 10), l.attendance!]),
+    );
+    const holidayMap = new Map(gymHolidays.map(h => [h.date, h.reason]));
+    const leaveSet = new Set<string>();
+    for (const lr of leaves) {
+      for (const d of lr.dates) { if (!lr.forcedDates.includes(d)) leaveSet.add(d); }
+    }
+
+    const records = dateRange.map(dateStr => {
+      const att = attMap.get(dateStr);
+      if (att) return { date: dateStr, status: 'present' as const,
+        markedInAt: att.markedInAt ?? null, markedOutAt: att.markedOutAt ?? null,
+        durationMinutes: att.durationMinutes ?? null, autoMarkedOut: att.autoMarkedOut };
+      if (leaveSet.has(dateStr))   return { date: dateStr, status: 'leave' as const };
+      if (holidayMap.has(dateStr)) return { date: dateStr, status: 'holiday' as const, reason: holidayMap.get(dateStr) };
+      return { date: dateStr, status: 'absent' as const };
+    });
+
+    const presentDays = records.filter(r => r.status === 'present').length;
+    const absentDays  = records.filter(r => r.status === 'absent').length;
+    const leaveDays   = records.filter(r => r.status === 'leave').length;
+    const holidayDays = records.filter(r => r.status === 'holiday').length;
+    const totalMinutes = records.reduce((s, r) => s + (('durationMinutes' in r ? r.durationMinutes : 0) ?? 0), 0);
+
+    return res.json({
+      ok: true,
+      data: { attendanceEnabled: gymSettings.attendanceEnabled, records, summary: { presentDays, absentDays, leaveDays, holidayDays, totalDays, totalMinutes } },
+    });
+  } catch (err) {
+    console.error('[Admin] attendance/user history error', err);
+    return res.status(500).json({ ok: false, error: { message: 'Failed to fetch user attendance history' } });
+  }
+});
+
+/**
+ * POST /api/admin/users/:id/reset-password
+ * Admin resets a member's password directly (no email flow yet).
+ */
+router.post('/users/:id/reset-password', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { newPassword } = req.body as { newPassword?: string };
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ ok: false, error: { message: 'Password must be at least 8 characters' } });
+    }
+    const hash = await hashPassword(newPassword);
+    const user = await User.findByIdAndUpdate(id, { passwordHash: hash }).lean();
+    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
+    return res.json({ ok: true, data: { message: 'Password reset successfully' } });
+  } catch {
+    return res.status(500).json({ ok: false, error: { message: 'Failed to reset password' } });
+  }
 });
 
 export default router;

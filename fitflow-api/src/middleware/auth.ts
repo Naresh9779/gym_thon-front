@@ -29,7 +29,7 @@ export async function authenticate(req: AuthRequest, res: Response, next: NextFu
     }
 
     req.user = {
-      userId: user._id.toString(),
+      userId: String(user._id),
       role: user.role,
       email: user.email,
       name: user.name

@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { Pencil, Check, X, LogOut, Settings, ChevronRight, CalendarOff, Plus, Clock, CheckCircle2, XCircle, Ban } from 'lucide-react';
+import { Pencil, Check, X, LogOut, Settings, ChevronRight, ChevronLeft, CalendarOff, Plus, Clock, CheckCircle2, XCircle, Ban, TrendingUp, Lock, Zap } from 'lucide-react';
 import { getInitials, formatDate } from '@/lib/utils';
 import LeaveModal from '@/components/user/LeaveModal';
 
@@ -15,9 +15,18 @@ export default function ProfilePage() {
   const toast = useToast();
   const [isEditing, setIsEditing] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [leaveRequests, setLeaveRequests] = useState<any[]>([]);
+  const [leaveRequests, setLeaveRequests]   = useState<any[]>([]);
+  const [leavePage, setLeavePage]           = useState(1);
+  const [leaveTotalPages, setLeaveTotalPages] = useState(1);
   const [leaveModalOpen, setLeaveModalOpen] = useState(false);
   const [submittingLeave, setSubmittingLeave] = useState(false);
+
+  // Subscription details (plan name, features, upgrade plans)
+  const [subDetails, setSubDetails] = useState<{
+    subscription: any;
+    lastSubscription: any;
+    upgradePlans: any[];
+  } | null>(null);
 
   const [form, setForm] = useState({
     age: 0, weight: 0, height: 0,
@@ -36,18 +45,35 @@ export default function ProfilePage() {
     }
   }, [user]);
 
-  const loadLeaveRequests = useCallback(async () => {
+  const loadLeaveRequests = useCallback(async (p: number) => {
     try {
       const token = getAccessToken();
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/leave`, {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/leave?page=${p}&limit=5`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const j = await res.json();
-      if (j.ok) setLeaveRequests(j.data.requests || []);
+      if (j.ok) {
+        setLeaveRequests(j.data.requests || []);
+        setLeaveTotalPages(j.data.totalPages || 1);
+      }
     } catch { /* ignore */ }
   }, [getAccessToken]);
 
-  useEffect(() => { loadLeaveRequests(); }, [loadLeaveRequests]);
+  useEffect(() => { loadLeaveRequests(1); }, [loadLeaveRequests]);
+
+  // Load subscription details
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = getAccessToken();
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/gym/subscription`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const j = await res.json();
+        if (j.ok) setSubDetails(j.data);
+      } catch { /* ignore */ }
+    })();
+  }, [getAccessToken]);
 
   const handleSubmitLeave = async (dates: string[], reason: string) => {
     setSubmittingLeave(true);
@@ -62,7 +88,8 @@ export default function ProfilePage() {
       if (j.ok) {
         toast.success('Leave request submitted');
         setLeaveModalOpen(false);
-        await loadLeaveRequests();
+        setLeavePage(1);
+        await loadLeaveRequests(1);
       } else {
         toast.error(j.error?.message || 'Failed to submit');
       }
@@ -78,17 +105,22 @@ export default function ProfilePage() {
         headers: { Authorization: `Bearer ${token}` },
       });
       const j = await res.json();
-      if (j.ok) { toast.success('Request cancelled'); await loadLeaveRequests(); }
+      if (j.ok) { toast.success('Request cancelled'); await loadLeaveRequests(leavePage); }
       else toast.error(j.error?.message || 'Failed to cancel');
     } catch { toast.error('Failed to cancel'); }
   };
 
   const initials = getInitials(user?.name);
 
-  const statusColor = user?.subscription?.status === 'active'
+  // Active sub from auth state; fall back to last sub (expired) from subDetails for display only
+  const displaySub = user?.subscription ?? subDetails?.lastSubscription ?? null;
+
+  const statusColor = displaySub?.status === 'active'
     ? 'bg-[#00E676]/20 text-[#00E676]'
-    : user?.subscription?.status === 'trial'
+    : displaySub?.status === 'trial'
     ? 'bg-blue-500/20 text-blue-400'
+    : displaySub?.status === 'expired'
+    ? 'bg-red-500/20 text-red-400'
     : 'bg-white/10 text-gray-400';
 
   const handleSave = async () => {
@@ -165,7 +197,7 @@ export default function ProfilePage() {
             <p className="text-sm text-gray-500 truncate mt-0.5">{user?.email}</p>
           </div>
           <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest flex-shrink-0 ${statusColor}`}>
-            {user?.subscription?.status || 'free'}
+            {displaySub?.status || 'no plan'}
           </span>
         </div>
 
@@ -286,34 +318,103 @@ export default function ProfilePage() {
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
-        className="bg-white rounded-2xl border border-gray-100"
+        className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
       >
         <div className="p-4 border-b border-gray-50">
           <p className="label-cap mb-0.5">Plan</p>
           <h3 className="font-black text-gray-900">Subscription</h3>
         </div>
         <div className="divide-y divide-gray-50">
+          {/* Plan name + status */}
+          <div className="flex items-center justify-between px-4 py-3.5">
+            <p className="text-sm font-bold text-gray-600">Plan</p>
+            <span className="text-sm font-black text-gray-900">
+              {displaySub?.planName || 'No Plan'}
+            </span>
+          </div>
           <div className="flex items-center justify-between px-4 py-3.5">
             <p className="text-sm font-bold text-gray-600">Status</p>
             <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full uppercase tracking-widest ${
-              user?.subscription?.status === 'active'
+              displaySub?.status === 'active'
                 ? 'bg-green-100 text-green-700'
-                : user?.subscription?.status === 'trial'
+                : displaySub?.status === 'trial'
                 ? 'bg-blue-100 text-blue-700'
+                : displaySub?.status === 'expired'
+                ? 'bg-red-100 text-red-600'
                 : 'bg-gray-100 text-gray-600'
             }`}>
-              {user?.subscription?.status || 'Free'}
+              {displaySub?.status || 'No Plan'}
             </span>
           </div>
-          {user?.subscription?.endDate && (
+          {displaySub?.endDate && (
             <div className="flex items-center justify-between px-4 py-3.5">
-              <p className="text-sm font-bold text-gray-600">Expires</p>
+              <p className="text-sm font-bold text-gray-600">{displaySub.status === 'expired' ? 'Expired on' : 'Expires'}</p>
               <p className="text-sm font-black text-gray-900">
-                {formatDate(user.subscription.endDate)}
+                {formatDate(displaySub.endDate)}
               </p>
             </div>
           )}
+
+          {/* Features */}
+          {displaySub?.features && (
+            <div className="px-4 py-3.5">
+              <p className="text-sm font-bold text-gray-600 mb-2">Features</p>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(displaySub.features as Record<string, boolean>).map(([key, enabled]) => {
+                  const labels: Record<string, string> = {
+                    aiWorkoutPlan: 'AI Workout',
+                    aiDietPlan: 'AI Diet',
+                    leaveRequests: 'Leave Requests',
+                    progressTracking: 'Progress Tracking',
+                  };
+                  return (
+                    <span
+                      key={key}
+                      className={`flex items-center gap-1 text-[10px] font-black px-2 py-1 rounded-full ${
+                        enabled
+                          ? 'bg-[#00E676]/10 text-[#00E676]'
+                          : 'bg-gray-100 text-gray-400 line-through'
+                      }`}
+                    >
+                      {enabled ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+                      {labels[key] || key}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
+
+        {/* Upgrade plans */}
+        {subDetails?.upgradePlans && subDetails.upgradePlans.length > 0 && (
+          <div className="border-t border-gray-50 p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <TrendingUp className="w-3.5 h-3.5 text-gray-400" />
+              <p className="text-xs font-black text-gray-500 uppercase tracking-wider">Available Upgrades</p>
+            </div>
+            <div className="space-y-2">
+              {subDetails.upgradePlans.map((plan: any) => (
+                <div
+                  key={plan._id}
+                  className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50/50"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: plan.color || '#6B7280' }} />
+                    <div>
+                      <p className="text-sm font-black text-gray-900">{plan.name}</p>
+                      <p className="text-[10px] text-gray-400">{plan.durationMonths} months</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-gray-900">₹{plan.price?.toLocaleString('en-IN')}</p>
+                    <p className="text-[10px] text-gray-400">Contact trainer</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </motion.div>
 
       {/* ── LEAVE REQUESTS ── */}
@@ -331,12 +432,18 @@ export default function ProfilePage() {
               <h3 className="font-black text-gray-900">Leave Requests</h3>
             </div>
           </div>
-          <button
-            onClick={() => setLeaveModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black text-[#00E676] text-xs font-bold hover:bg-gray-900 transition-colors"
-          >
-            <Plus className="w-3.5 h-3.5" /> Request
-          </button>
+          {user?.subscription && user.subscription.features?.leaveRequests !== false ? (
+            <button
+              onClick={() => setLeaveModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black text-[#00E676] text-xs font-bold hover:bg-gray-900 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" /> Request
+            </button>
+          ) : (
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-gray-100 text-gray-400 text-[10px] font-black">
+              <Lock className="w-3 h-3" /> {!user?.subscription ? 'Expired' : 'Not included'}
+            </span>
+          )}
         </div>
         {leaveRequests.length === 0 ? (
           <div className="px-4 py-8 text-center">
@@ -344,49 +451,70 @@ export default function ProfilePage() {
             <p className="text-xs text-gray-300 mt-1">Request leave for planned absences</p>
           </div>
         ) : (
-          <div className="divide-y divide-gray-50 max-h-64 overflow-y-auto">
-            {leaveRequests.map((req) => {
-              const statusIcon = {
-                pending: <Clock className="w-3.5 h-3.5 text-amber-400" />,
-                approved: <CheckCircle2 className="w-3.5 h-3.5 text-[#00E676]" />,
-                rejected: <XCircle className="w-3.5 h-3.5 text-red-400" />,
-                cancelled: <Ban className="w-3.5 h-3.5 text-gray-300" />,
-              }[req.status as string];
-              const statusColor = {
-                pending: 'bg-amber-50 text-amber-700',
-                approved: 'bg-green-50 text-green-700',
-                rejected: 'bg-red-50 text-red-600',
-                cancelled: 'bg-gray-50 text-gray-400',
-              }[req.status as string] || 'bg-gray-50 text-gray-500';
-              return (
-                <div key={req._id} className="flex items-start justify-between px-4 py-3 gap-3">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <div className="mt-0.5">{statusIcon}</div>
-                    <div className="min-w-0">
-                      <p className="text-sm font-bold text-gray-800 truncate">{req.reason}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">
-                        {req.dates.length} day{req.dates.length !== 1 ? 's' : ''} · {req.dates.slice(0, 3).join(', ')}{req.dates.length > 3 ? '…' : ''}
-                      </p>
-                      {req.adminNote && (
-                        <p className="text-xs text-gray-500 italic mt-0.5">Note: {req.adminNote}</p>
+          <>
+            <div className="divide-y divide-gray-50">
+              {leaveRequests.map((req) => {
+                const statusIcon = {
+                  pending: <Clock className="w-3.5 h-3.5 text-amber-400" />,
+                  approved: <CheckCircle2 className="w-3.5 h-3.5 text-[#00E676]" />,
+                  rejected: <XCircle className="w-3.5 h-3.5 text-red-400" />,
+                  cancelled: <Ban className="w-3.5 h-3.5 text-gray-300" />,
+                }[req.status as string];
+                const statusColor = {
+                  pending: 'bg-amber-50 text-amber-700',
+                  approved: 'bg-green-50 text-green-700',
+                  rejected: 'bg-red-50 text-red-600',
+                  cancelled: 'bg-gray-50 text-gray-400',
+                }[req.status as string] || 'bg-gray-50 text-gray-500';
+                return (
+                  <div key={req._id} className="flex items-start justify-between px-4 py-3 gap-3">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <div className="mt-0.5">{statusIcon}</div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-bold text-gray-800 truncate">{req.reason}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {req.dates.length} day{req.dates.length !== 1 ? 's' : ''} · {req.dates.slice(0, 3).join(', ')}{req.dates.length > 3 ? '…' : ''}
+                        </p>
+                        {req.adminNote && (
+                          <p className="text-xs text-gray-500 italic mt-0.5">Note: {req.adminNote}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${statusColor}`}>{req.status}</span>
+                      {req.status === 'pending' && (
+                        <button
+                          onClick={() => handleCancelLeave(req._id)}
+                          className="text-[10px] font-bold text-gray-400 hover:text-red-400 transition-colors"
+                        >
+                          Cancel
+                        </button>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${statusColor}`}>{req.status}</span>
-                    {req.status === 'pending' && (
-                      <button
-                        onClick={() => handleCancelLeave(req._id)}
-                        className="text-[10px] font-bold text-gray-400 hover:text-red-400 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+            {leaveTotalPages > 1 && (
+              <div className="flex items-center justify-between px-4 py-2.5 border-t border-gray-50">
+                <button
+                  onClick={() => { const p = Math.max(1, leavePage - 1); setLeavePage(p); loadLeaveRequests(p); }}
+                  disabled={leavePage === 1}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-xs text-gray-400">{leavePage} / {leaveTotalPages}</span>
+                <button
+                  onClick={() => { const p = Math.min(leaveTotalPages, leavePage + 1); setLeavePage(p); loadLeaveRequests(p); }}
+                  disabled={leavePage === leaveTotalPages}
+                  className="p-1.5 rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </>
         )}
       </motion.div>
 

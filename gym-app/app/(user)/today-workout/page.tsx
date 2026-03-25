@@ -4,13 +4,16 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useWorkoutPlans } from '@/hooks/useWorkoutPlan';
 import { useUserProgress } from '@/hooks/useUserProgress';
+import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { CheckCircle2, Loader2, Trophy, Moon, ChevronRight } from 'lucide-react';
+import { CheckCircle2, Loader2, Trophy, Moon, Lock } from 'lucide-react';
 
 export default function TodayWorkoutPage() {
   const { plans: workoutPlans, loading: workoutLoading } = useWorkoutPlans();
   const { logWorkout, logs } = useUserProgress();
+  const { user } = useAuth();
   const toast = useToast();
+  const canTrack = user?.subscription?.features?.progressTracking !== false;
   const [completedExercises, setCompletedExercises] = useState<Set<number>>(new Set());
   const [isLogging, setIsLogging] = useState(false);
   const [workoutAlreadyLogged, setWorkoutAlreadyLogged] = useState(false);
@@ -47,14 +50,14 @@ export default function TodayWorkoutPage() {
   }, [logs, exercises.length]);
 
   const toggle = (i: number) => {
-    if (workoutAlreadyLogged) return;
+    if (workoutAlreadyLogged || !canTrack) return;
     const s = new Set(completedExercises);
     s.has(i) ? s.delete(i) : s.add(i);
     setCompletedExercises(s);
   };
 
   const handleComplete = async () => {
-    if (isRestDay || !exercises.length || isLogging || workoutAlreadyLogged) return;
+    if (isRestDay || !exercises.length || isLogging || workoutAlreadyLogged || !canTrack) return;
     setIsLogging(true);
     const ok = await logWorkout(todayWorkout?.day || todayName, completedExercises.size, exercises.length);
     setIsLogging(false);
@@ -80,6 +83,18 @@ export default function TodayWorkoutPage() {
         <p className="label-cap mb-1">{todayWorkout?.day || todayName}</p>
         <h1 className="text-3xl font-black text-gray-900 tracking-tight">Today's Workout</h1>
       </motion.div>
+
+      {/* ── FEATURE GATE BANNER ── */}
+      {!canTrack && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3"
+        >
+          <Lock className="w-4 h-4 text-amber-500 shrink-0" />
+          <p className="text-sm font-bold text-amber-700">Progress tracking is not included in your plan. Upgrade to log workouts.</p>
+        </motion.div>
+      )}
 
       {/* ── PROGRESS HERO ── */}
       {!isRestDay && exercises.length > 0 && (
@@ -141,7 +156,7 @@ export default function TodayWorkoutPage() {
                 key={i}
                 variants={{ hidden: { opacity: 0, x: -12 }, show: { opacity: 1, x: 0 } }}
                 onClick={() => toggle(i)}
-                disabled={workoutAlreadyLogged}
+                disabled={workoutAlreadyLogged || !canTrack}
                 className={`w-full text-left rounded-2xl border-2 p-4 transition-all ${
                   done
                     ? 'bg-black border-[#00E676]'
@@ -184,18 +199,22 @@ export default function TodayWorkoutPage() {
       {!isRestDay && exercises.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-[#f4f4f5]/90 backdrop-blur-md border-t border-gray-200 z-30">
           <motion.button
-            whileTap={{ scale: 0.97 }}
+            whileTap={{ scale: !canTrack ? 1 : 0.97 }}
             onClick={handleComplete}
-            disabled={isLogging || completedExercises.size === 0 || workoutAlreadyLogged}
+            disabled={isLogging || completedExercises.size === 0 || workoutAlreadyLogged || !canTrack}
             className={`w-full max-w-lg mx-auto flex items-center justify-center gap-2.5 py-4 rounded-2xl font-black text-base transition-all ${
-              workoutAlreadyLogged
+              !canTrack
+                ? 'bg-amber-50 text-amber-600 cursor-not-allowed'
+                : workoutAlreadyLogged
                 ? 'bg-green-100 text-green-600 cursor-default'
                 : completedExercises.size === 0 || isLogging
                 ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
                 : 'bg-black text-[#00E676] shadow-xl hover:shadow-2xl'
             }`}
           >
-            {isLogging ? (
+            {!canTrack ? (
+              <><Lock className="w-5 h-5" />Not Included in Your Plan</>
+            ) : isLogging ? (
               <><Loader2 className="w-5 h-5 animate-spin" />Logging...</>
             ) : workoutAlreadyLogged ? (
               <><CheckCircle2 className="w-5 h-5" />Workout Logged</>

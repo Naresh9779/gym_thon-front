@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { CalendarOff, Megaphone, Trash2, RefreshCw } from 'lucide-react';
+import { CalendarOff, Megaphone, Trash2, RefreshCw, QrCode, Clock, ToggleLeft, ToggleRight } from 'lucide-react';
 
 export default function CustomizationPage() {
   const { getAccessToken } = useAuth();
@@ -126,8 +126,45 @@ export default function CustomizationPage() {
     } catch { toast.error('Failed to delete announcement'); }
   };
 
+  // ── Attendance Settings ───────────────────────────────────────────────────
+  const [gymSettings, setGymSettings] = useState<{
+    attendanceEnabled: boolean;
+    autoMarkOutHours: number;
+    qrTokenExpiryMinutes: number;
+  } | null>(null);
+  const [savingSettings, setSavingSettings] = useState(false);
+
+  const loadGymSettings = useCallback(async () => {
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${base}/api/admin/gym-settings`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const j = await res.json();
+      if (j.ok) setGymSettings(j.data);
+    } catch { /* ignore */ }
+  }, [base, getAccessToken]);
+
+  const saveGymSettings = async (patch: Partial<typeof gymSettings>) => {
+    if (!gymSettings) return;
+    setSavingSettings(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${base}/api/admin/gym-settings`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(patch),
+      });
+      const j = await res.json();
+      if (j.ok) { setGymSettings(j.data); toast.success('Settings saved'); }
+      else toast.error(j.error?.message || 'Failed to save');
+    } catch { toast.error('Failed to save settings'); }
+    finally { setSavingSettings(false); }
+  };
+
   useEffect(() => { loadHolidays(); }, [loadHolidays]);
   useEffect(() => { loadAnnouncements(); }, [loadAnnouncements]);
+  useEffect(() => { loadGymSettings(); }, [loadGymSettings]);
 
   const annTypeBadge = (type: string) => {
     if (type === 'warning') return 'bg-amber-50 text-amber-700';
@@ -354,6 +391,99 @@ export default function CustomizationPage() {
                 </button>
               </div>
             ))
+          )}
+        </div>
+      </motion.div>
+
+      {/* ── ATTENDANCE SETTINGS ── */}
+      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
+        className="bg-white rounded-2xl border border-gray-100 overflow-hidden">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-50">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 bg-[#00E676]/10 rounded-xl flex items-center justify-center">
+              <QrCode className="w-4.5 h-4.5 text-[#00E676]" />
+            </div>
+            <div>
+              <h2 className="font-black text-gray-900">Attendance System</h2>
+              <p className="text-xs text-gray-400">QR-based gym check-in for members</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-5 py-4 space-y-4">
+          {/* Enable toggle */}
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-black text-gray-900">Enable Attendance Tracking</p>
+              <p className="text-xs text-gray-400 mt-0.5">Members can scan QR to mark attendance</p>
+            </div>
+            <button
+              onClick={() => gymSettings && saveGymSettings({ attendanceEnabled: !gymSettings.attendanceEnabled })}
+              disabled={savingSettings || !gymSettings}
+              className="transition-colors disabled:opacity-40"
+            >
+              {gymSettings?.attendanceEnabled
+                ? <ToggleRight className="w-8 h-8 text-[#00E676]" />
+                : <ToggleLeft className="w-8 h-8 text-gray-300" />
+              }
+            </button>
+          </div>
+
+          {gymSettings?.attendanceEnabled && (
+            <div className="space-y-3 pt-2 border-t border-gray-50">
+              {/* Auto mark-out */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-gray-400" />
+                  <div>
+                    <p className="text-sm font-bold text-gray-700">Auto Mark-Out After</p>
+                    <p className="text-xs text-gray-400">If member forgets to mark out</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={gymSettings.autoMarkOutHours}
+                    onChange={e => saveGymSettings({ autoMarkOutHours: Number(e.target.value) })}
+                    disabled={savingSettings}
+                    className="px-2 py-1.5 border border-gray-200 rounded-xl text-sm font-black text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#00E676]/40 disabled:opacity-40"
+                  >
+                    {[1, 2, 3, 4, 5, 6].map(h => (
+                      <option key={h} value={h}>{h}h</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* QR expiry */}
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <QrCode className="w-4 h-4 text-gray-400" />
+                  <div>
+                    <p className="text-sm font-bold text-gray-700">QR Code Expiry</p>
+                    <p className="text-xs text-gray-400">How long each QR stays valid</p>
+                  </div>
+                </div>
+                <select
+                  value={gymSettings.qrTokenExpiryMinutes}
+                  onChange={e => saveGymSettings({ qrTokenExpiryMinutes: Number(e.target.value) })}
+                  disabled={savingSettings}
+                  className="px-2 py-1.5 border border-gray-200 rounded-xl text-sm font-black text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-[#00E676]/40 disabled:opacity-40"
+                >
+                  {[5, 10, 15, 20, 30, 60].map(m => (
+                    <option key={m} value={m}>{m} min</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-2">
+                <a
+                  href="/attendance"
+                  className="inline-flex items-center gap-1.5 text-xs font-black text-[#00E676] bg-black px-3 py-2 rounded-xl hover:bg-gray-900 transition-colors"
+                >
+                  <QrCode className="w-3.5 h-3.5" /> Open Attendance Dashboard →
+                </a>
+              </div>
+            </div>
           )}
         </div>
       </motion.div>

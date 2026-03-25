@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { Types } from 'mongoose';
 import { authenticate, requireAdmin, AuthRequest } from '../middleware/auth';
 import LeaveRequest from '../models/LeaveRequest';
-import User from '../models/User';
+import Subscription from '../models/Subscription';
 
 const router = Router();
 router.use(authenticate);
@@ -13,8 +13,20 @@ router.use(authenticate);
 router.get('/', async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.userId;
-    const requests = await LeaveRequest.find({ userId }).sort({ createdAt: -1 }).lean();
-    res.json({ ok: true, data: { requests } });
+    const { page = '1', limit = '10' } = req.query as Record<string, string>;
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(50, Math.max(1, parseInt(limit)));
+
+    const [requests, total] = await Promise.all([
+      LeaveRequest.find({ userId })
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      LeaveRequest.countDocuments({ userId }),
+    ]);
+
+    res.json({ ok: true, data: { requests, total, page: pageNum, totalPages: Math.ceil(total / limitNum) } });
   } catch (err) {
     console.error('[Leave] list error', err);
     res.status(500).json({ ok: false, error: { message: 'Failed to fetch leave requests' } });
@@ -26,6 +38,12 @@ router.post('/', async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.userId;
     const { dates, reason } = req.body;
+
+    // Check feature flag — user's plan must include leaveRequests
+    const sub = await Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean();
+    if (!sub?.features?.leaveRequests) {
+      return res.status(403).json({ ok: false, error: { message: 'Your subscription plan does not include leave requests.', code: 'FEATURE_NOT_INCLUDED' } });
+    }
 
     if (!Array.isArray(dates) || dates.length === 0) {
       return res.status(400).json({ ok: false, error: { message: 'At least one date is required' } });
@@ -93,19 +111,28 @@ router.delete('/:id', async (req: AuthRequest, res) => {
 
 // ─── ADMIN ROUTES ────────────────────────────────────────────────────────────
 
-// GET /api/leave/admin/requests?status=pending&userId=
+// GET /api/leave/admin/requests?status=pending&userId=&page=&limit=
 router.get('/admin/requests', requireAdmin, async (req: AuthRequest, res) => {
   try {
-    const { status, userId } = req.query;
+    const { status, userId, page = '1', limit = '20' } = req.query as Record<string, string>;
+    const pageNum  = Math.max(1, parseInt(page));
+    const limitNum = Math.min(100, Math.max(1, parseInt(limit)));
+
     const filter: Record<string, any> = {};
     if (status) filter.status = status;
     if (userId) filter.userId = userId;
 
-    const requests = await LeaveRequest.find(filter)
-      .populate('userId', 'name email')
-      .sort({ createdAt: -1 })
-      .lean();
-    res.json({ ok: true, data: { requests } });
+    const [requests, total] = await Promise.all([
+      LeaveRequest.find(filter)
+        .populate('userId', 'name email')
+        .sort({ createdAt: -1 })
+        .skip((pageNum - 1) * limitNum)
+        .limit(limitNum)
+        .lean(),
+      LeaveRequest.countDocuments(filter),
+    ]);
+
+    res.json({ ok: true, data: { requests, total, page: pageNum, totalPages: Math.ceil(total / limitNum) } });
   } catch (err) {
     console.error('[Leave] admin list error', err);
     res.status(500).json({ ok: false, error: { message: 'Failed to fetch leave requests' } });
@@ -124,14 +151,16 @@ router.patch('/admin/requests/:id/approve', requireAdmin, async (req: AuthReques
 
     // Extend subscription endDate by number of leave days
     const daysToAdd = request.dates.length;
-    const user = await User.findById(request.userId);
-    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
 
-    if (user.subscription?.endDate) {
-      const end = new Date(user.subscription.endDate);
-      end.setDate(end.getDate() + daysToAdd);
-      user.subscription.endDate = end;
-      await user.save();
+    const activeSub = await Subscription.findOne({
+      userId: request.userId,
+      status: { $in: ['active', 'trial'] },
+      endDate: { $gt: new Date() },
+    });
+    if (activeSub) {
+      activeSub.endDate = new Date(activeSub.endDate);
+      activeSub.endDate.setDate(activeSub.endDate.getDate() + daysToAdd);
+      await activeSub.save();
     }
 
     request.status = 'approved';
@@ -185,14 +214,11 @@ router.patch('/admin/requests/:id/force-came', requireAdmin, async (req: AuthReq
     }
 
     // Revert 1 day from user subscription
-    const user = await User.findById(request.userId);
-    if (!user) return res.status(404).json({ ok: false, error: { message: 'User not found' } });
-
-    if (user.subscription?.endDate) {
-      const end = new Date(user.subscription.endDate);
-      end.setDate(end.getDate() - 1);
-      user.subscription.endDate = end;
-      await user.save();
+    const forceSub = await Subscription.findOne({ userId: request.userId }).sort({ startDate: -1 });
+    if (forceSub) {
+      forceSub.endDate = new Date(forceSub.endDate);
+      forceSub.endDate.setDate(forceSub.endDate.getDate() - 1);
+      await forceSub.save();
     }
 
     request.forcedDates.push(date);

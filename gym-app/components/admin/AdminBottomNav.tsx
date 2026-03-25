@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, BarChart3, ClipboardList, Users, Settings2 } from "lucide-react";
+import { LayoutDashboard, BarChart3, ClipboardList, Users, IndianRupee } from "lucide-react";
 
 const tabs = [
-  { href: "/dashboard",     icon: LayoutDashboard, label: "Dashboard" },
-  { href: "/analytics",     icon: BarChart3,       label: "Analytics" },
-  { href: "/requests",      icon: ClipboardList,   label: "Requests"  },
-  { href: "/users",         icon: Users,           label: "Users"     },
-  { href: "/customization", icon: Settings2,       label: "Custom"    },
+  { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/analytics", icon: BarChart3,       label: "Analytics" },
+  { href: "/requests",  icon: ClipboardList,   label: "Requests"  },
+  { href: "/users",     icon: Users,           label: "Users"     },
+  { href: "/payments",  icon: IndianRupee,     label: "Payments"  },
 ];
 
 export default function AdminBottomNav() {

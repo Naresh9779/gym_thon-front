@@ -26,11 +26,17 @@ type User = {
     };
   };
   subscription?: {
-    plan?: string;
+    planName?: string;
     status?: 'active' | 'inactive' | 'trial' | 'expired';
     startDate?: string;
     endDate?: string;
     durationMonths?: number;
+    features?: {
+      aiWorkoutPlan?: boolean;
+      aiDietPlan?: boolean;
+      leaveRequests?: boolean;
+      progressTracking?: boolean;
+    };
   };
   createdAt?: string;
   updatedAt?: string;
@@ -258,6 +264,30 @@ export function useAuth() {
     fetchMe();
   }, [initialized, fetchMe]);
 
+  /**
+   * Drop-in replacement for fetch() that:
+   *  - Automatically attaches the Bearer token
+   *  - On 401: clears session and redirects to /auth
+   */
+  const authFetch = useCallback(async (url: string, options: RequestInit = {}): Promise<Response> => {
+    const token = getStoredToken();
+    const res = await fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers ?? {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+    });
+    if (res.status === 401) {
+      clearStoredTokens();
+      try { localStorage.removeItem('authUser'); } catch {}
+      setUser(null);
+      if (typeof window !== 'undefined') window.location.href = '/auth';
+      throw new Error('Session expired. Please log in again.');
+    }
+    return res;
+  }, []);
+
   return {
     user,
     loading,
@@ -267,6 +297,7 @@ export function useAuth() {
     logout,
     refreshUser: fetchMe,
     getAccessToken: getStoredToken,
+    authFetch,
     initialized,
   };
 }

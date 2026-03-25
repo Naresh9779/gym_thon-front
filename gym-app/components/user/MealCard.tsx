@@ -20,7 +20,7 @@ interface Props {
   macros?: { protein?: number; carbs?: number; fats?: number };
   // Lifted state from parent (optional — if not provided, logging is disabled)
   logs?: ProgressLog[];
-  logMeal?: (mealName: string, calories?: number, macros?: { p?: number; c?: number; f?: number }) => Promise<{ success: boolean; alreadyLogged?: boolean }>;
+  logMeal?: (mealName: string, calories?: number, macros?: { protein?: number; carbs?: number; fats?: number }) => Promise<{ success: boolean; alreadyLogged?: boolean }>;
   onLog?: () => void;
 }
 
@@ -48,7 +48,7 @@ export default function MealCard({ mealName, time, calories, foods = [], macros,
       const result = await logMeal(
         mealName,
         calories,
-        macros ? { p: macros.protein, c: macros.carbs, f: macros.fats } : undefined
+        macros ? { protein: macros.protein, carbs: macros.carbs, fats: macros.fats } : undefined
       );
       if (result.success) {
         toast.success(result.alreadyLogged ? `${mealName} already logged.` : `${mealName} logged!`);

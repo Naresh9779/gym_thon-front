@@ -48,9 +48,9 @@ export default function TodayMealPage() {
       meal.name,
       meal.calories,
       {
-        p: meal.macros?.protein,
-        c: meal.macros?.carbs,
-        f: meal.macros?.fats
+        protein: meal.macros?.protein,
+        carbs:   meal.macros?.carbs,
+        fats:    meal.macros?.fats,
       }
     );
     

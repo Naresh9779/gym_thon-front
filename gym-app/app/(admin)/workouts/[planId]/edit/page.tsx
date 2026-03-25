@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
 import { motion } from 'framer-motion';
-import { ChevronLeft, Plus, Trash2, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Plus, Trash2, Loader2 } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
 
 interface Props { params: Promise<{ planId: string }> }
@@ -62,6 +62,7 @@ export default function AdminEditWorkoutPage({ params }: Props) {
   const [durationWeeks, setDurationWeeks] = useState<number | ''>('');
   const [status, setStatus] = useState<WorkoutPlan['status']>('active');
   const [days, setDays] = useState<WorkoutDay[]>([]);
+  const [currentDayIdx, setCurrentDayIdx] = useState(0);
 
   useEffect(() => {
     const run = async () => {
@@ -187,60 +188,91 @@ export default function AdminEditWorkoutPage({ params }: Props) {
         <div className="p-5 space-y-4">
           {days.length === 0 ? (
             <p className="text-sm text-gray-400 text-center py-6">No workout days yet. Click "Add Day" to create one.</p>
-          ) : days.map((day, di) => (
-            <div key={di} className="border-2 border-gray-100 rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-3 p-3 bg-gray-50">
-                <input
-                  type="text"
-                  value={day.name}
-                  onChange={e => updateDayName(di, e.target.value)}
-                  className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-black focus:border-gray-900 focus:outline-none bg-white"
-                  placeholder={`Day ${day.day} name`}
-                />
-                <button type="button" onClick={() => removeDay(di)} className="p-2 rounded-xl text-red-400 hover:bg-red-50 transition-colors">
-                  <Trash2 className="w-4 h-4" />
+          ) : (
+            <>
+              <div className="flex items-center justify-between bg-white rounded-2xl border border-gray-100 px-4 py-3">
+                <button
+                  onClick={() => setCurrentDayIdx(i => Math.max(0, i - 1))}
+                  disabled={currentDayIdx === 0}
+                  className="p-2 rounded-xl hover:bg-gray-100 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronLeft className="w-4 h-4 text-gray-600" />
+                </button>
+                <div className="text-center">
+                  <p className="text-xs font-bold text-gray-400">EDITING</p>
+                  <p className="font-black text-gray-900">Day {currentDayIdx + 1} <span className="text-gray-400 font-semibold">of {days.length}</span></p>
+                  {days[currentDayIdx]?.name && <p className="text-xs text-gray-400 mt-0.5">{days[currentDayIdx].name}</p>}
+                </div>
+                <button
+                  onClick={() => setCurrentDayIdx(i => Math.min(days.length - 1, i + 1))}
+                  disabled={currentDayIdx === days.length - 1}
+                  className="p-2 rounded-xl hover:bg-gray-100 disabled:opacity-30 transition-colors"
+                >
+                  <ChevronRight className="w-4 h-4 text-gray-600" />
                 </button>
               </div>
 
-              <div className="p-3 space-y-2">
-                {day.exercises.map((ex, ei) => (
-                  <div key={ei} className="bg-white border border-gray-100 rounded-xl p-3">
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2">
-                      <div className="sm:col-span-2">
-                        <label className="label-cap block mb-1">Exercise</label>
-                        <input type="text" value={ex.name} onChange={e => updateExercise(di, ei, 'name', e.target.value)} className={inputCls} placeholder="e.g. Bench Press" />
-                      </div>
-                      <div>
-                        <label className="label-cap block mb-1">Sets</label>
-                        <input type="number" value={ex.sets} onChange={e => updateExercise(di, ei, 'sets', Number(e.target.value))} className={inputCls} min="1" />
-                      </div>
-                      <div>
-                        <label className="label-cap block mb-1">Reps</label>
-                        <input type="number" value={ex.reps} onChange={e => updateExercise(di, ei, 'reps', Number(e.target.value))} className={inputCls} min="1" />
-                      </div>
-                      <div>
-                        <label className="label-cap block mb-1">Rest (s)</label>
-                        <input type="number" value={ex.rest} onChange={e => updateExercise(di, ei, 'rest', Number(e.target.value))} className={inputCls} min="0" />
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <input type="text" value={ex.notes || ''} onChange={e => updateExercise(di, ei, 'notes', e.target.value)} className={`${inputCls} flex-1`} placeholder="Notes (optional)" />
-                      <button type="button" onClick={() => removeExercise(di, ei)} className="p-2 rounded-xl text-red-400 hover:bg-red-50 transition-colors shrink-0">
+              {(() => {
+                const di = currentDayIdx;
+                const day = days[di];
+                if (!day) return null;
+                return (
+                  <div className="border-2 border-gray-100 rounded-2xl overflow-hidden">
+                    <div className="flex items-center gap-3 p-3 bg-gray-50">
+                      <input
+                        type="text"
+                        value={day.name}
+                        onChange={e => updateDayName(di, e.target.value)}
+                        className="flex-1 px-3 py-2 border-2 border-gray-200 rounded-xl text-sm font-black focus:border-gray-900 focus:outline-none bg-white"
+                        placeholder={`Day ${day.day} name`}
+                      />
+                      <button type="button" onClick={() => { removeDay(di); setCurrentDayIdx(i => Math.max(0, i - 1)); }} className="p-2 rounded-xl text-red-400 hover:bg-red-50 transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+
+                    <div className="p-3 space-y-2">
+                      {day.exercises.map((ex, ei) => (
+                        <div key={ei} className="bg-white border border-gray-100 rounded-xl p-3">
+                          <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mb-2">
+                            <div className="sm:col-span-2">
+                              <label className="label-cap block mb-1">Exercise</label>
+                              <input type="text" value={ex.name} onChange={e => updateExercise(di, ei, 'name', e.target.value)} className={inputCls} placeholder="e.g. Bench Press" />
+                            </div>
+                            <div>
+                              <label className="label-cap block mb-1">Sets</label>
+                              <input type="number" value={ex.sets} onChange={e => updateExercise(di, ei, 'sets', Number(e.target.value))} className={inputCls} min="1" />
+                            </div>
+                            <div>
+                              <label className="label-cap block mb-1">Reps</label>
+                              <input type="number" value={ex.reps} onChange={e => updateExercise(di, ei, 'reps', Number(e.target.value))} className={inputCls} min="1" />
+                            </div>
+                            <div>
+                              <label className="label-cap block mb-1">Rest (s)</label>
+                              <input type="number" value={ex.rest} onChange={e => updateExercise(di, ei, 'rest', Number(e.target.value))} className={inputCls} min="0" />
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <input type="text" value={ex.notes || ''} onChange={e => updateExercise(di, ei, 'notes', e.target.value)} className={`${inputCls} flex-1`} placeholder="Notes (optional)" />
+                            <button type="button" onClick={() => removeExercise(di, ei)} className="p-2 rounded-xl text-red-400 hover:bg-red-50 transition-colors shrink-0">
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => addExercise(di)}
+                        className="w-full py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
+                      >
+                        + Add Exercise
+                      </button>
+                    </div>
                   </div>
-                ))}
-                <button
-                  type="button"
-                  onClick={() => addExercise(di)}
-                  className="w-full py-2.5 rounded-xl border-2 border-dashed border-gray-200 text-xs font-bold text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
-                >
-                  + Add Exercise
-                </button>
-              </div>
-            </div>
-          ))}
+                );
+              })()}
+            </>
+          )}
         </div>
       </div>
 

@@ -4,10 +4,14 @@ import { motion } from 'framer-motion';
 import MealCard from '@/components/user/MealCard';
 import { useDietPlan } from '@/hooks/useDietPlan';
 import { useUserProgress } from '@/hooks/useUserProgress';
+import { useAuth } from '@/hooks/useAuth';
+import { Lock } from 'lucide-react';
 
 export default function TodayDietPage() {
   const { plans: dietPlans, loading: dietLoading } = useDietPlan();
   const { logs, logMeal, loading: progressLoading } = useUserProgress();
+  const { user } = useAuth();
+  const canTrack = user?.subscription?.features?.progressTracking !== false;
 
   const today = new Date();
   const todayStr = today.toISOString().slice(0, 10);
@@ -59,6 +63,18 @@ export default function TodayDietPage() {
           </p>
         )}
       </motion.div>
+
+      {/* ── FEATURE GATE BANNER ── */}
+      {!canTrack && (
+        <motion.div
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3"
+        >
+          <Lock className="w-4 h-4 text-amber-500 shrink-0" />
+          <p className="text-sm font-bold text-amber-700">Progress tracking is not included in your plan. Upgrade to log meals.</p>
+        </motion.div>
+      )}
 
       {/* ── CALORIE HERO ── */}
       {totalCalories > 0 && (
@@ -128,7 +144,7 @@ export default function TodayDietPage() {
                 foods={meal.foods}
                 macros={meal.macros}
                 logs={logs}
-                logMeal={logMeal}
+                logMeal={canTrack ? logMeal : undefined}
               />
             </motion.div>
           ))}

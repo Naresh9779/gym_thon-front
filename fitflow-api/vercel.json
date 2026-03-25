@@ -7,6 +7,14 @@
     {
       "path": "/api/cron/workout-expiry",
       "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/cron/gym-left-update",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/cron/attendance-auto-markout",
+      "schedule": "*/30 * * * *"
     }
   ]
 }

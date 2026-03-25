@@ -9,7 +9,7 @@ import { useDietPlan } from "@/hooks/useDietPlan";
 import { useUserProgress } from "@/hooks/useUserProgress";
 import { useToast } from "@/hooks/useToast";
 import CheckInModal, { CheckInData } from "@/components/shared/CheckInModal";
-import { ArrowRight, Dumbbell, Salad, TrendingUp, ClipboardList, User, AlertTriangle, Sparkles, RefreshCw, CheckCircle2, CalendarOff, Megaphone } from "lucide-react";
+import { ArrowRight, Dumbbell, Salad, TrendingUp, ClipboardList, User, AlertTriangle, Sparkles, RefreshCw, CheckCircle2, CalendarOff, Megaphone, Lock, QrCode, LogOut, Timer } from "lucide-react";
 
 export default function UserDashboard() {
   const { user, getAccessToken } = useAuth();
@@ -28,6 +28,12 @@ export default function UserDashboard() {
     holiday?: { reason: string };
     announcements: any[];
   } | null>(null);
+  const [attendanceToday, setAttendanceToday] = useState<{
+    attendanceEnabled: boolean;
+    autoMarkOutHours?: number;
+    attendance: { markedInAt?: string; markedOutAt?: string; durationMinutes?: number } | null;
+  } | null>(null);
+  const [markingOut, setMarkingOut] = useState(false);
 
   useEffect(() => {
     if (workoutPlans.length > 0) {
@@ -117,6 +123,10 @@ export default function UserDashboard() {
       .then(r => r.json())
       .then(j => { if (j.ok) setGymInfo(j.data); })
       .catch(() => {});
+    fetch(`${base}/api/attendance/today`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(j => { if (j.ok) setAttendanceToday(j.data); })
+      .catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -145,6 +155,9 @@ export default function UserDashboard() {
   const workoutPlanDaysLeft: number | null = planStatus?.workoutDaysLeft ?? null;
   const workoutNeedsRenewal: boolean = planStatus?.workoutNeedsRenewal ?? false;
   const dietNeedsRenewal: boolean = planStatus?.dietNeedsRenewal ?? false;
+  // Feature availability from subscription plan
+  const hasWorkoutFeature: boolean = planStatus?.features?.aiWorkoutPlan ?? user?.subscription?.features?.aiWorkoutPlan ?? true;
+  const hasDietFeature: boolean = planStatus?.features?.aiDietPlan ?? user?.subscription?.features?.aiDietPlan ?? true;
 
   const hasReadyRequest = !!planStatus?.readyRequest;
 
@@ -165,6 +178,30 @@ export default function UserDashboard() {
   const showExpiringPlansBanner = !loading && planStatus && canCheckIn && !hasPendingRequest &&
     workoutPlanDaysLeft !== null && workoutPlanDaysLeft >= 0 && workoutPlanDaysLeft <= 7;
   const showPendingBanner = !loading && hasPendingRequest;
+
+  const handleMarkOut = async () => {
+    setMarkingOut(true);
+    try {
+      const token = getAccessToken();
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/attendance/mark-out`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setAttendanceToday(prev => prev ? {
+          ...prev,
+          attendance: prev.attendance ? {
+            ...prev.attendance,
+            markedOutAt: json.data.markedOutAt,
+            durationMinutes: json.data.durationMinutes,
+          } : null,
+        } : null);
+        toast.success("Checked out!");
+      }
+    } catch { /* silent */ }
+    finally { setMarkingOut(false); }
+  };
 
   const refreshPlanStatus = async () => {
     try {
@@ -439,53 +476,147 @@ export default function UserDashboard() {
       <div className="grid grid-cols-2 gap-3">
         {/* Workout */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-          <Link href="/today-workout" className="block group">
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 group-hover:border-green-300 group-hover:shadow-md transition-all h-full">
-              <div className="w-9 h-9 bg-black rounded-xl flex items-center justify-center mb-3">
-                <Dumbbell className="w-4.5 h-4.5 text-[#00E676]" />
+          {hasWorkoutFeature ? (
+            <Link href="/today-workout" className="block group">
+              <div className="bg-white rounded-2xl p-4 border border-gray-100 group-hover:border-green-300 group-hover:shadow-md transition-all h-full">
+                <div className="w-9 h-9 bg-black rounded-xl flex items-center justify-center mb-3">
+                  <Dumbbell className="w-4.5 h-4.5 text-[#00E676]" />
+                </div>
+                <p className="label-cap mb-1">Workout</p>
+                {loading ? (
+                  <div className="h-8 bg-gray-100 rounded animate-pulse w-3/4" />
+                ) : (
+                  <p className="text-xl font-black text-gray-900 leading-tight">
+                    {todayWorkout && !todayWorkout.isRestDay
+                      ? `${todayWorkout.exercises?.length || 0} exs`
+                      : todayWorkout?.isRestDay
+                      ? "Rest"
+                      : "—"}
+                  </p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-green-600 uppercase tracking-wide">
+                  Start <ArrowRight className="w-3 h-3" />
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 h-full opacity-60">
+              <div className="w-9 h-9 bg-gray-200 rounded-xl flex items-center justify-center mb-3">
+                <Lock className="w-4 h-4 text-gray-400" />
               </div>
               <p className="label-cap mb-1">Workout</p>
-              {loading ? (
-                <div className="h-8 bg-gray-100 rounded animate-pulse w-3/4" />
-              ) : (
-                <p className="text-xl font-black text-gray-900 leading-tight">
-                  {todayWorkout && !todayWorkout.isRestDay
-                    ? `${todayWorkout.exercises?.length || 0} exs`
-                    : todayWorkout?.isRestDay
-                    ? "Rest"
-                    : "—"}
-                </p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-green-600 uppercase tracking-wide">
-                Start <ArrowRight className="w-3 h-3" />
-              </div>
+              <p className="text-sm font-black text-gray-400 leading-tight">Not Included</p>
+              <p className="text-[10px] text-gray-400 mt-1">Upgrade your plan</p>
             </div>
-          </Link>
+          )}
         </motion.div>
 
         {/* Diet */}
         <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}>
-          <Link href="/today-diet" className="block group">
-            <div className="bg-white rounded-2xl p-4 border border-gray-100 group-hover:border-orange-300 group-hover:shadow-md transition-all h-full">
-              <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center mb-3">
-                <Salad className="w-4.5 h-4.5 text-orange-500" />
+          {hasDietFeature ? (
+            <Link href="/today-diet" className="block group">
+              <div className="bg-white rounded-2xl p-4 border border-gray-100 group-hover:border-orange-300 group-hover:shadow-md transition-all h-full">
+                <div className="w-9 h-9 bg-orange-50 rounded-xl flex items-center justify-center mb-3">
+                  <Salad className="w-4.5 h-4.5 text-orange-500" />
+                </div>
+                <p className="label-cap mb-1">Nutrition</p>
+                {loading ? (
+                  <div className="h-8 bg-gray-100 rounded animate-pulse w-3/4" />
+                ) : (
+                  <p className="text-xl font-black text-gray-900 leading-tight">
+                    {todayDiet?._todayCalories ? `${todayDiet._todayCalories}` : "—"}
+                    {todayDiet?._todayCalories && <span className="text-sm font-medium text-gray-400 ml-1">kcal</span>}
+                  </p>
+                )}
+                <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-orange-500 uppercase tracking-wide">
+                  Log meals <ArrowRight className="w-3 h-3" />
+                </div>
+              </div>
+            </Link>
+          ) : (
+            <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100 h-full opacity-60">
+              <div className="w-9 h-9 bg-gray-200 rounded-xl flex items-center justify-center mb-3">
+                <Lock className="w-4 h-4 text-gray-400" />
               </div>
               <p className="label-cap mb-1">Nutrition</p>
-              {loading ? (
-                <div className="h-8 bg-gray-100 rounded animate-pulse w-3/4" />
-              ) : (
-                <p className="text-xl font-black text-gray-900 leading-tight">
-                  {todayDiet?._todayCalories ? `${todayDiet._todayCalories}` : "—"}
-                  {todayDiet?._todayCalories && <span className="text-sm font-medium text-gray-400 ml-1">kcal</span>}
-                </p>
-              )}
-              <div className="flex items-center gap-1 mt-2 text-[10px] font-bold text-orange-500 uppercase tracking-wide">
-                Log meals <ArrowRight className="w-3 h-3" />
-              </div>
+              <p className="text-sm font-black text-gray-400 leading-tight">Not Included</p>
+              <p className="text-[10px] text-gray-400 mt-1">Upgrade your plan</p>
             </div>
-          </Link>
+          )}
         </motion.div>
       </div>
+
+      {/* ── ATTENDANCE CARD ── (only when enabled) */}
+      {attendanceToday?.attendanceEnabled && (() => {
+        const att = attendanceToday.attendance;
+        const isIn = !!att?.markedInAt && !att?.markedOutAt;
+        const isDone = !!att?.markedInAt && !!att?.markedOutAt;
+        const fmtT = (iso?: string) => iso ? new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true }) : '—';
+        const fmtD = (m?: number) => !m ? null : m >= 60 ? `${Math.floor(m/60)}h ${m%60}m` : `${m}m`;
+        return (
+          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.22 }}>
+            {isIn ? (
+              <div className="bg-black rounded-2xl p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="w-2 h-2 bg-[#00E676] rounded-full animate-pulse" />
+                  <span className="text-xs font-black text-[#00E676]">Currently In Gym</span>
+                  <span className="ml-auto text-xs text-gray-500">{fmtT(att?.markedInAt)}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 bg-[#00E676]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Timer className="w-4.5 h-4.5 text-[#00E676]" />
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-white font-black text-sm">Active Session</p>
+                    <p className="text-xs text-gray-400">Auto mark-out in {attendanceToday.autoMarkOutHours}h if you forget</p>
+                  </div>
+                  <button
+                    onClick={handleMarkOut}
+                    disabled={markingOut}
+                    className="flex items-center gap-1.5 bg-[#00E676] text-black font-black text-xs px-3 py-2 rounded-xl hover:bg-[#00c864] transition-colors disabled:opacity-60"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    {markingOut ? '…' : 'Mark Out'}
+                  </button>
+                </div>
+              </div>
+            ) : isDone ? (
+              <Link href="/my-attendance">
+                <div className="bg-white rounded-2xl p-4 border border-gray-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-[#00E676]/10 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="w-4.5 h-4.5 text-[#00E676]" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-black text-gray-900 text-sm">Session Complete</p>
+                      <p className="text-xs text-gray-400">{fmtT(att?.markedInAt)} – {fmtT(att?.markedOutAt)}</p>
+                    </div>
+                    {att?.durationMinutes && (
+                      <span className="font-black text-[#00E676] text-sm">{fmtD(att.durationMinutes)}</span>
+                    )}
+                    <ArrowRight className="w-4 h-4 text-gray-300" />
+                  </div>
+                </div>
+              </Link>
+            ) : (
+              <Link href="/my-attendance">
+                <div className="bg-white rounded-2xl p-4 border border-dashed border-gray-200">
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 bg-gray-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                      <QrCode className="w-4.5 h-4.5 text-gray-400" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="font-black text-gray-700 text-sm">Not Checked In</p>
+                      <p className="text-xs text-gray-400">Scan gym QR to mark attendance</p>
+                    </div>
+                    <ArrowRight className="w-4 h-4 text-gray-300" />
+                  </div>
+                </div>
+              </Link>
+            )}
+          </motion.div>
+        );
+      })()}
 
       {/* ── QUICK NUMBERS ROW ── */}
       <motion.div
