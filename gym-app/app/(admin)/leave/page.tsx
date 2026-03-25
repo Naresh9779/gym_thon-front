@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { CalendarOff, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Ban, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
+import { CalendarOff, CheckCircle2, XCircle, Clock, ChevronDown, ChevronUp, Ban, RefreshCw, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 
 type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
@@ -21,31 +22,55 @@ interface LeaveReq {
 }
 
 const STATUS_TABS: LeaveStatus[] = ['pending', 'approved', 'rejected'];
+const LIMIT = 20;
 
 export default function AdminLeavePage() {
   const { getAccessToken } = useAuth();
   const toast = useToast();
   const [activeTab, setActiveTab] = useState<LeaveStatus>('pending');
-  const [requests, setRequests] = useState<LeaveReq[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [expanded, setExpanded] = useState<string | null>(null);
+  const [requests, setRequests]   = useState<LeaveReq[]>([]);
+  const [total, setTotal]         = useState(0);
+  const [page, setPage]           = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [loading, setLoading]     = useState(true);
+  const [expanded, setExpanded]   = useState<string | null>(null);
   const [adminNote, setAdminNote] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [search, setSearch]       = useState('');
+  const [searchInput, setSearchInput] = useState('');
 
-  const load = useCallback(async () => {
+  // Debounce search
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(searchInput); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [searchInput]);
+
+  const load = useCallback(async (p: number) => {
     setLoading(true);
     try {
       const token = getAccessToken();
+      const params = new URLSearchParams({ status: activeTab, page: String(p), limit: String(LIMIT) });
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/leave/admin/requests?status=${activeTab}`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/leave/admin/requests?${params}`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const j = await res.json();
-      if (j.ok) setRequests(j.data.requests || []);
+      if (j.ok) {
+        setRequests(j.data.requests || []);
+        setTotal(j.data.total || 0);
+        setTotalPages(j.data.totalPages || 1);
+      }
     } catch { /* ignore */ } finally { setLoading(false); }
   }, [getAccessToken, activeTab]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    setPage(1);
+    setSearch('');
+    setSearchInput('');
+    setExpanded(null);
+  }, [activeTab]);
+
+  useEffect(() => { load(page); }, [load, page]);
 
   const act = async (id: string, action: 'approve' | 'reject', note?: string) => {
     setActionLoading(id + action);
@@ -64,7 +89,7 @@ export default function AdminLeavePage() {
         toast.success(action === 'approve' ? `Approved — subscription extended by ${j.data.daysAdded} day(s)` : 'Rejected');
         setExpanded(null);
         setAdminNote('');
-        await load();
+        await load(page);
       } else toast.error(j.error?.message || 'Action failed');
     } catch { toast.error('Action failed'); }
     finally { setActionLoading(null); }
@@ -83,17 +108,25 @@ export default function AdminLeavePage() {
         }
       );
       const j = await res.json();
-      if (j.ok) { toast.success(`Marked ${date} as attended — 1 day reverted`); await load(); }
+      if (j.ok) { toast.success(`Marked ${date} as attended — 1 day reverted`); await load(page); }
       else toast.error(j.error?.message || 'Failed');
     } catch { toast.error('Failed'); }
     finally { setActionLoading(null); }
   };
 
+  // Client-side search filter on current page results
+  const filteredRequests = search.trim()
+    ? requests.filter(r => {
+        const q = search.toLowerCase();
+        return r.userId?.name?.toLowerCase().includes(q) || r.reason?.toLowerCase().includes(q);
+      })
+    : requests;
+
   const statusBadge = (s: LeaveStatus) => {
     const map: Record<LeaveStatus, string> = {
-      pending: 'bg-amber-50 text-amber-700',
-      approved: 'bg-green-50 text-green-700',
-      rejected: 'bg-red-50 text-red-600',
+      pending:   'bg-amber-50 text-amber-700',
+      approved:  'bg-green-50 text-green-700',
+      rejected:  'bg-red-50 text-red-600',
       cancelled: 'bg-gray-50 text-gray-400',
     };
     return map[s];
@@ -119,10 +152,24 @@ export default function AdminLeavePage() {
             {tab}
           </button>
         ))}
-        <button onClick={load} className="ml-auto p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
+        <span className="text-xs text-gray-400 ml-1 font-medium">{total} total</span>
+        <button onClick={() => load(page)} className="ml-auto p-2 rounded-xl text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors">
           <RefreshCw className="w-4 h-4" />
         </button>
       </div>
+
+      {/* Search */}
+      {!loading && requests.length > 0 && (
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+          <input
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            placeholder="Search name or reason…"
+            className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm font-medium focus:border-gray-500 focus:outline-none"
+          />
+        </div>
+      )}
 
       {/* List */}
       {loading ? (
@@ -136,9 +183,14 @@ export default function AdminLeavePage() {
           <CalendarOff className="w-8 h-8 text-gray-200 mx-auto mb-3" />
           <p className="text-sm font-black text-gray-300">No {activeTab} requests</p>
         </div>
+      ) : filteredRequests.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-gray-100 py-12 text-center">
+          <Search className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+          <p className="text-sm font-black text-gray-300">No results</p>
+        </div>
       ) : (
         <div className="space-y-3">
-          {requests.map(req => (
+          {filteredRequests.map(req => (
             <motion.div
               key={req._id}
               initial={{ opacity: 0, y: 8 }}
@@ -155,7 +207,9 @@ export default function AdminLeavePage() {
                     {req.userId?.name?.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
-                    <p className="text-sm font-black text-gray-900 truncate">{req.userId?.name}</p>
+                    <Link href={`/users/${req.userId?._id}`} onClick={e => e.stopPropagation()} className="text-sm font-black text-gray-900 truncate hover:text-[#00E676] transition-colors block">
+                      {req.userId?.name}
+                    </Link>
                     <p className="text-xs text-gray-400 truncate">{req.reason}</p>
                   </div>
                 </div>
@@ -260,6 +314,31 @@ export default function AdminLeavePage() {
               </AnimatePresence>
             </motion.div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between pt-1">
+          <p className="text-xs text-gray-400 font-medium">
+            Page {page} of {totalPages} · {total} requests
+          </p>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-900 disabled:opacity-30 transition-colors px-3 py-1.5 rounded-xl border border-gray-200"
+            >
+              <ChevronLeft className="w-3.5 h-3.5" /> Prev
+            </button>
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="flex items-center gap-1 text-xs font-bold text-gray-500 hover:text-gray-900 disabled:opacity-30 transition-colors px-3 py-1.5 rounded-xl border border-gray-200"
+            >
+              Next <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
     </div>

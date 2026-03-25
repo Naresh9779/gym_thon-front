@@ -15,7 +15,7 @@ interface ProgressLog {
     mealName: string;
     loggedAt: string;
     calories?: number;
-    macros?: { p?: number; c?: number; f?: number };
+    macros?: { protein?: number; carbs?: number; fats?: number };
   }>;
 }
 
@@ -106,7 +106,7 @@ export function useUserProgress() {
     }
   }, [getAccessToken, fetchProgress]);
 
-  const logMeal = useCallback(async (mealName: string, calories?: number, macros?: { p?: number; c?: number; f?: number }) => {
+  const logMeal = useCallback(async (mealName: string, calories?: number, macros?: { protein?: number; carbs?: number; fats?: number }) => {
     try {
       const token = getAccessToken();
       const date = new Date().toISOString().slice(0, 10);

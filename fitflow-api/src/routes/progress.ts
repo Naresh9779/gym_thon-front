@@ -3,6 +3,7 @@ import { authenticate, AuthRequest } from '../middleware/auth';
 import { requireActiveSubscription } from '../middleware/subscription';
 import ProgressLog from '../models/ProgressLog';
 import PlanRequest from '../models/PlanRequest';
+import Subscription from '../models/Subscription';
 import { z } from 'zod';
 
 const router = Router();
@@ -33,7 +34,12 @@ router.get('/', async (req: AuthRequest, res) => {
 router.post('/workout', async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.userId;
-    
+
+    const activeSub = await Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean();
+    if (activeSub?.features?.progressTracking === false) {
+      return res.status(403).json({ ok: false, error: { message: 'Progress tracking is not included in your plan.', code: 'FEATURE_NOT_INCLUDED' } });
+    }
+
     const schema = z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       day: z.string().optional(),
@@ -48,16 +54,14 @@ router.post('/workout', async (req: AuthRequest, res) => {
     }
     
     const { date, day, completedExercises, totalExercises, durationSec } = parsed.data;
-    const logDate = new Date(date);
-    logDate.setHours(0, 0, 0, 0);
-    
+
     // Find or create progress log for this date
-    let log = await ProgressLog.findOne({ userId, date: logDate });
-    
+    let log = await ProgressLog.findOne({ userId, date: new Date(date) });
+
     if (!log) {
       log = new ProgressLog({
         userId,
-        date: logDate,
+        date: new Date(date),
         workout: { day, completedExercises, totalExercises, durationSec },
         meals: []
       });
@@ -78,15 +82,20 @@ router.post('/workout', async (req: AuthRequest, res) => {
 router.post('/meal', async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.userId;
-    
+
+    const activeSub = await Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean();
+    if (activeSub?.features?.progressTracking === false) {
+      return res.status(403).json({ ok: false, error: { message: 'Progress tracking is not included in your plan.', code: 'FEATURE_NOT_INCLUDED' } });
+    }
+
     const schema = z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       mealName: z.string(),
       calories: z.number().min(0).optional(),
       macros: z.object({
-        p: z.number().min(0).optional(),
-        c: z.number().min(0).optional(),
-        f: z.number().min(0).optional(),
+        protein: z.number().min(0).optional(),
+        carbs:   z.number().min(0).optional(),
+        fats:    z.number().min(0).optional(),
       }).optional(),
     });
     
@@ -96,16 +105,14 @@ router.post('/meal', async (req: AuthRequest, res) => {
     }
     
     const { date, mealName, calories, macros } = parsed.data;
-    const logDate = new Date(date);
-    logDate.setHours(0, 0, 0, 0);
-    
+
     // Find or create progress log for this date
-    let log = await ProgressLog.findOne({ userId, date: logDate });
+    let log = await ProgressLog.findOne({ userId, date: new Date(date) });
 
     if (!log) {
       log = new ProgressLog({
         userId,
-        date: logDate,
+        date: new Date(date),
         meals: []
       });
     } else {
@@ -196,6 +203,11 @@ router.post('/measurements', async (req: AuthRequest, res) => {
   try {
     const userId = req.user!.userId;
 
+    const activeSub = await Subscription.findOne({ userId, status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }).select('features').lean();
+    if (activeSub?.features?.progressTracking === false) {
+      return res.status(403).json({ ok: false, error: { message: 'Progress tracking is not included in your plan.', code: 'FEATURE_NOT_INCLUDED' } });
+    }
+
     const schema = z.object({
       date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       weight: z.number().min(0).optional(),
@@ -211,12 +223,10 @@ router.post('/measurements', async (req: AuthRequest, res) => {
     }
 
     const { date, ...measurementData } = parsed.data;
-    const logDate = new Date(date);
-    logDate.setHours(0, 0, 0, 0);
 
-    let log = await ProgressLog.findOne({ userId, date: logDate });
+    let log = await ProgressLog.findOne({ userId, date: new Date(date) });
     if (!log) {
-      log = new ProgressLog({ userId, date: logDate, meals: [] });
+      log = new ProgressLog({ userId, date: new Date(date), meals: [] });
     }
     log.measurements = measurementData as any;
     await log.save();

@@ -62,15 +62,15 @@ router.get('/diet/monthly/:year/:month', async (req: AuthRequest, res) => {
       }, 0);
 
       const totalProtein = activeLogs.reduce((sum, log) => {
-        return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.p || 0), 0) || 0);
+        return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.protein || 0), 0) || 0);
       }, 0);
 
       const totalCarbs = activeLogs.reduce((sum, log) => {
-        return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.c || 0), 0) || 0);
+        return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.carbs || 0), 0) || 0);
       }, 0);
 
       const totalFats = activeLogs.reduce((sum, log) => {
-        return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.f || 0), 0) || 0);
+        return sum + (log.meals?.reduce((mealSum, meal) => mealSum + (meal.macros?.fats || 0), 0) || 0);
       }, 0);
 
       const avgDailyCalories = totalDaysLogged > 0 ? Math.round(totalCalories / totalDaysLogged) : 0;

@@ -1,11 +1,11 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/useToast';
-import { ClipboardList, CheckCircle2, X, Loader2, Dumbbell, Salad, Trash2, StickyNote } from 'lucide-react';
+import { ClipboardList, CheckCircle2, X, Loader2, Dumbbell, Salad, Trash2, StickyNote, Search } from 'lucide-react';
 import { getInitials } from '@/lib/utils';
 
 type StatusTab = 'pending' | 'generated' | 'dismissed';
@@ -52,8 +52,13 @@ export default function RequestsPage() {
   const [noteInputId, setNoteInputId] = useState<string | null>(null); // which card is showing the note input
   const [noteValues, setNoteValues] = useState<Record<string, string>>({}); // per-request note values
   const [bulkNote, setBulkNote] = useState('');
+  const [search, setSearch] = useState('');
+  const [planTypeFilter, setPlanTypeFilter] = useState<'all' | 'workout' | 'diet'>('all');
+  const [dateFilter, setDateFilter] = useState<'all' | 'today' | 'week' | 'older'>('all');
 
   const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const [reqPage, setReqPage] = useState(1);
+  const REQ_PAGE_SIZE = 10;
 
   const loadRequests = useCallback(async (tab: StatusTab) => {
     setLoading(true);
@@ -75,6 +80,10 @@ export default function RequestsPage() {
 
   useEffect(() => {
     loadRequests(activeTab);
+    setReqPage(1);
+    setSearch('');
+    setPlanTypeFilter('all');
+    setDateFilter('all');
   }, [activeTab, loadRequests]);
 
   const toggleSelect = (id: string) => {
@@ -86,9 +95,34 @@ export default function RequestsPage() {
     });
   };
 
+  const filteredRequests = useMemo(() => {
+    let result = requests;
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(r =>
+        r.userId?.name?.toLowerCase().includes(q) ||
+        r.userId?.email?.toLowerCase().includes(q)
+      );
+    }
+    if (planTypeFilter !== 'all') {
+      result = result.filter(r => r.planTypes?.includes(planTypeFilter));
+    }
+    if (dateFilter !== 'all') {
+      const now = Date.now();
+      result = result.filter(r => {
+        const diff = Math.floor((now - new Date(r.requestedAt).getTime()) / 86400000);
+        if (dateFilter === 'today') return diff === 0;
+        if (dateFilter === 'week') return diff <= 7;
+        if (dateFilter === 'older') return diff > 7;
+        return true;
+      });
+    }
+    return result;
+  }, [requests, search, planTypeFilter, dateFilter]);
+
   const toggleAll = () => {
-    if (selected.size === requests.length) setSelected(new Set());
-    else setSelected(new Set(requests.map(r => r._id)));
+    if (selected.size === filteredRequests.length) setSelected(new Set());
+    else setSelected(new Set(filteredRequests.map(r => r._id)));
   };
 
   const handleGenerate = async (requestId: string, memberName: string) => {
@@ -217,6 +251,53 @@ export default function RequestsPage() {
         </div>
       </motion.div>
 
+      {/* Filter bar */}
+      {!loading && requests.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+          className="flex items-center gap-2 flex-wrap"
+        >
+          <div className="relative flex-1 min-w-[180px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+            <input
+              value={search}
+              onChange={e => { setSearch(e.target.value); setReqPage(1); }}
+              placeholder="Search member…"
+              className="w-full pl-8 pr-3 py-2 border border-gray-200 rounded-xl text-sm font-medium focus:border-gray-500 focus:outline-none"
+            />
+          </div>
+          <select
+            value={planTypeFilter}
+            onChange={e => { setPlanTypeFilter(e.target.value as 'all' | 'workout' | 'diet'); setReqPage(1); }}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 focus:outline-none focus:border-gray-500 bg-white"
+          >
+            <option value="all">All types</option>
+            <option value="workout">Workout</option>
+            <option value="diet">Diet</option>
+          </select>
+          <select
+            value={dateFilter}
+            onChange={e => { setDateFilter(e.target.value as 'all' | 'today' | 'week' | 'older'); setReqPage(1); }}
+            className="px-3 py-2 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 focus:outline-none focus:border-gray-500 bg-white"
+          >
+            <option value="all">Any date</option>
+            <option value="today">Today</option>
+            <option value="week">This week</option>
+            <option value="older">Older</option>
+          </select>
+          {(search || planTypeFilter !== 'all' || dateFilter !== 'all') && (
+            <button
+              onClick={() => { setSearch(''); setPlanTypeFilter('all'); setDateFilter('all'); setReqPage(1); }}
+              className="text-xs font-bold text-gray-400 hover:text-gray-700 transition-colors"
+            >
+              Clear
+            </button>
+          )}
+        </motion.div>
+      )}
+
       {/* Bulk actions bar */}
       {activeTab === 'pending' && !loading && requests.length > 0 && (
         <motion.div
@@ -229,7 +310,7 @@ export default function RequestsPage() {
             <div className="flex items-center gap-3">
               <input
                 type="checkbox"
-                checked={selected.size === requests.length && requests.length > 0}
+                checked={selected.size === filteredRequests.length && filteredRequests.length > 0}
                 onChange={toggleAll}
                 className="w-4 h-4 accent-black rounded cursor-pointer"
               />
@@ -321,9 +402,15 @@ export default function RequestsPage() {
               {activeTab === 'pending' ? 'Members will appear here after submitting their check-in.' : 'Nothing to show here.'}
             </p>
           </div>
+        ) : filteredRequests.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-gray-100 px-6 py-10 text-center">
+            <Search className="w-8 h-8 text-gray-200 mx-auto mb-3" />
+            <p className="font-black text-gray-400">No results</p>
+            <p className="text-xs text-gray-300 mt-1">Try adjusting your filters</p>
+          </div>
         ) : (
           <div className="space-y-3">
-            {requests.map((req, idx) => {
+            {filteredRequests.slice((reqPage - 1) * REQ_PAGE_SIZE, reqPage * REQ_PAGE_SIZE).map((req, idx) => {
               const member = req.userId;
               const ci = req.checkIn;
               const days = daysWaiting(req.requestedAt);
@@ -465,6 +552,31 @@ export default function RequestsPage() {
                 </motion.div>
               );
             })}
+          </div>
+        )}
+
+        {/* Pagination */}
+        {filteredRequests.length > REQ_PAGE_SIZE && (
+          <div className="flex items-center justify-between pt-2">
+            <p className="text-xs text-gray-400 font-medium">
+              {(reqPage - 1) * REQ_PAGE_SIZE + 1}–{Math.min(reqPage * REQ_PAGE_SIZE, filteredRequests.length)} of {filteredRequests.length}
+            </p>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setReqPage(p => Math.max(1, p - 1))} disabled={reqPage === 1}
+                className="px-3 py-1.5 rounded-xl text-xs font-black border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition-colors">
+                ← Prev
+              </button>
+              {Array.from({ length: Math.ceil(filteredRequests.length / REQ_PAGE_SIZE) }, (_, i) => i + 1).map(n => (
+                <button key={n} onClick={() => setReqPage(n)}
+                  className={`w-8 h-8 rounded-xl text-xs font-black transition-colors ${n === reqPage ? 'bg-black text-[#00E676]' : 'border border-gray-200 text-gray-600 hover:bg-gray-50'}`}>
+                  {n}
+                </button>
+              ))}
+              <button onClick={() => setReqPage(p => Math.min(Math.ceil(filteredRequests.length / REQ_PAGE_SIZE), p + 1))} disabled={reqPage === Math.ceil(filteredRequests.length / REQ_PAGE_SIZE)}
+                className="px-3 py-1.5 rounded-xl text-xs font-black border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-30 transition-colors">
+                Next →
+              </button>
+            </div>
           </div>
         )}
       </motion.div>

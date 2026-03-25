@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/hooks/useAuth";
 import { getInitials } from "@/lib/utils";
-import { Zap, LayoutDashboard, BarChart3, ClipboardList, Users, X, Menu, Shield, CalendarOff, Settings2 } from "lucide-react";
+import { Zap, LayoutDashboard, BarChart3, ClipboardList, Users, X, Menu, Shield, CalendarOff, Settings2, CreditCard, IndianRupee, QrCode } from "lucide-react";
 
 function LogoutIcon() {
   return (
@@ -21,14 +21,24 @@ export default function AdminNavigation() {
   const router = useRouter();
   const { user, logout } = useAuth();
 
-  const adminNav = [
-    { name: "Dashboard",      href: "/dashboard",      icon: LayoutDashboard },
-    { name: "Analytics",      href: "/analytics",      icon: BarChart3 },
-    { name: "Requests",       href: "/requests",       icon: ClipboardList },
-    { name: "Leave",          href: "/leave",          icon: CalendarOff },
-    { name: "Users",          href: "/users",          icon: Users },
-    { name: "Customization",  href: "/customization",  icon: Settings2 },
+  // Shown in both top bar and side drawer
+  const primaryNav = [
+    { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+    { name: "Analytics", href: "/analytics", icon: BarChart3 },
+    { name: "Payments",  href: "/payments",  icon: IndianRupee },
+    { name: "Requests",  href: "/requests",  icon: ClipboardList },
+    { name: "Users",     href: "/users",     icon: Users },
   ];
+
+  // Side drawer only
+  const secondaryNav = [
+    { name: "Leave",          href: "/leave",         icon: CalendarOff },
+    { name: "Subscriptions",  href: "/subscriptions", icon: CreditCard },
+    { name: "Attendance",     href: "/attendance",    icon: QrCode },
+    { name: "Customization",  href: "/customization", icon: Settings2 },
+  ];
+
+  const allNav = [...primaryNav, ...secondaryNav];
 
   const handleLogout = async () => {
     setOpen(false);
@@ -63,9 +73,9 @@ export default function AdminNavigation() {
               </Link>
             </div>
 
-            {/* Center: nav links on desktop */}
+            {/* Center: nav links on desktop — primary only */}
             <nav className="hidden sm:flex items-center gap-1">
-              {adminNav.map((n) => {
+              {primaryNav.map((n) => {
                 const Icon = n.icon;
                 const isActive = pathname === n.href || pathname.startsWith(n.href + "/");
                 return (
@@ -146,26 +156,49 @@ export default function AdminNavigation() {
             </div>
           </div>
 
-          {/* Nav */}
-          <nav className="flex-1 overflow-y-auto p-4 space-y-1">
-            {adminNav.map((item) => {
-              const Icon = item.icon;
-              const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  onClick={() => setOpen(false)}
-                  className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
-                    isActive ? "bg-black text-[#00E676] font-black" : "text-gray-700 hover:bg-gray-100 font-bold"
-                  }`}
-                >
-                  <Icon className="w-5 h-5 flex-shrink-0" />
-                  <span className="text-sm">{item.name}</span>
-                  {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#00E676]" />}
-                </Link>
-              );
-            })}
+          {/* Nav — all items in side drawer */}
+          <nav className="flex-1 overflow-y-auto p-4">
+            <div className="space-y-1">
+              {primaryNav.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      isActive ? "bg-black text-[#00E676] font-black" : "text-gray-700 hover:bg-gray-100 font-bold"
+                    }`}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    <span className="text-sm">{item.name}</span>
+                    {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#00E676]" />}
+                  </Link>
+                );
+              })}
+            </div>
+            <div className="mt-4 pt-4 border-t border-gray-100 space-y-1">
+              <p className="px-3 mb-2 text-[9px] font-black text-gray-400 uppercase tracking-widest">More</p>
+              {secondaryNav.map((item) => {
+                const Icon = item.icon;
+                const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
+                return (
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    onClick={() => setOpen(false)}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${
+                      isActive ? "bg-black text-[#00E676] font-black" : "text-gray-700 hover:bg-gray-100 font-bold"
+                    }`}
+                  >
+                    <Icon className="w-5 h-5 flex-shrink-0" />
+                    <span className="text-sm">{item.name}</span>
+                    {isActive && <span className="ml-auto w-1.5 h-1.5 rounded-full bg-[#00E676]" />}
+                  </Link>
+                );
+              })}
+            </div>
           </nav>
 
           {/* Logout */}

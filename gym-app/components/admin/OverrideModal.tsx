@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Dumbbell, Salad, AlertCircle } from "lucide-react";
 
@@ -19,14 +19,15 @@ interface Props {
   onConfirm: (data: OverrideFormData) => void;
   generating?: boolean;
   userName?: string;
+  initialPlanType?: 'workout' | 'diet';
 }
 
 const inputCls =
   "w-full px-3 py-2.5 border-2 border-gray-200 rounded-xl focus:border-gray-900 focus:outline-none text-sm font-medium bg-white transition-all";
 
-export default function OverrideModal({ open, onClose, onConfirm, generating, userName }: Props) {
+export default function OverrideModal({ open, onClose, onConfirm, generating, userName, initialPlanType }: Props) {
   const [form, setForm] = useState<OverrideFormData>({
-    planType: "workout",
+    planType: initialPlanType ?? "workout",
     adminNote: "",
     additionalContext: "",
     durationWeeks: 4,
@@ -36,6 +37,11 @@ export default function OverrideModal({ open, onClose, onConfirm, generating, us
 
   const set = <K extends keyof OverrideFormData>(k: K, v: OverrideFormData[K]) =>
     setForm(f => ({ ...f, [k]: v }));
+
+  // Sync planType when modal opens with a specific type
+  useEffect(() => {
+    if (open && initialPlanType) set("planType", initialPlanType);
+  }, [open, initialPlanType]);
 
   const handleConfirm = () => {
     if (!form.adminNote.trim()) return;

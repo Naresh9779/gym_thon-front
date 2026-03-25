@@ -11,6 +11,7 @@ import cron from './cron';
 import plans from './plans';
 import leave from './leave';
 import gym from './gym';
+import attendance from './attendance';
 
 const router = Router();
 
@@ -27,5 +28,6 @@ router.use('/cron', cron);
 router.use('/plans', plans);
 router.use('/leave', leave);
 router.use('/gym', gym);
+router.use('/attendance', attendance);
 
 export default router;

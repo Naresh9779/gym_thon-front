@@ -1,12 +1,27 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { useToast } from '@/hooks/useToast';
 import { useAuth } from '@/hooks/useAuth';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Check, Dumbbell, Salad, CalendarOff, TrendingUp, Phone, IndianRupee, Info } from 'lucide-react';
 import CustomSelect from '@/components/ui/CustomSelect';
+
+interface SubscriptionPlan {
+  _id: string;
+  name: string;
+  price: number;
+  durationDays: number;
+  features: {
+    aiWorkoutPlan: boolean;
+    aiDietPlan: boolean;
+    leaveRequests: boolean;
+    progressTracking: boolean;
+  };
+  color: string;
+  isActive: boolean;
+}
 
 const inputCls = (err?: boolean) =>
   `w-full px-3 py-2.5 border-2 rounded-xl focus:outline-none transition-all text-sm font-medium bg-white ${
@@ -22,19 +37,41 @@ export default function AddUserPage() {
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>('');
 
+  const [paymentReceived, setPaymentReceived] = useState(true);
   const [form, setForm] = useState({
     name: '', email: '', password: '', confirmPassword: '',
+    mobile: '',
     age: '', weight: '', height: '',
     gender: '',
     goal: 'muscle_gain',
     activityLevel: 'moderate',
     experienceLevel: 'beginner',
-    subscriptionDurationMonths: '1',
     isVegetarian: false,
     weeklyBudget: '',
     dietType: 'balanced',
   });
+
+  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const token = getAccessToken();
+        const res = await fetch(`${base}/api/admin/subscription-plans`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const j = await res.json();
+        if (j.ok) {
+          const active = (j.data.plans || []).filter((p: SubscriptionPlan) => p.isActive);
+          setPlans(active);
+          if (active.length > 0) setSelectedPlanId(active[0]._id);
+        }
+      } catch { /* ignore */ }
+    })();
+  }, [base, getAccessToken]);
 
   const set = (k: keyof typeof form, v: string | boolean) => {
     setForm(f => ({ ...f, [k]: v }));
@@ -65,9 +102,7 @@ export default function AddUserPage() {
     else if (height < 100 || height > 250) e.height = 'Height must be between 100–250 cm';
 
     if (!form.gender) e.gender = 'Gender is required';
-
-    const months = Number(form.subscriptionDurationMonths);
-    if (!form.subscriptionDurationMonths || months < 1 || months > 60) e.subscriptionDurationMonths = 'Duration must be 1–60 months';
+    if (!selectedPlanId) e.plan = 'Please select a subscription plan';
 
     setErrors(e);
     return Object.keys(e).length === 0;
@@ -84,14 +119,16 @@ export default function AddUserPage() {
         endurance: 'endurance', strength: 'maintenance', general_fitness: 'maintenance',
       };
       const token = getAccessToken();
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/users`, {
+      const res = await fetch(`${base}/api/admin/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           name: form.name.trim(),
           email: form.email.trim(),
           password: form.password,
-          subscriptionDurationMonths: Number(form.subscriptionDurationMonths),
+          ...(form.mobile.trim() ? { mobile: form.mobile.trim() } : {}),
+          paymentReceived,
+          planId: selectedPlanId,
           profile: {
             age: Number(form.age),
             weight: Number(form.weight),
@@ -184,6 +221,14 @@ export default function AddUserPage() {
                 onChange={e => set('confirmPassword', e.target.value)}
                 className={inputCls(!!errors.confirmPassword)} placeholder="Repeat password" />
               {fieldErr('confirmPassword')}
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label-cap block mb-2">
+                <span className="inline-flex items-center gap-1"><Phone className="w-3 h-3" />Mobile Number</span>
+                <span className="text-gray-400 normal-case font-medium ml-1">(optional)</span>
+              </label>
+              <input type="tel" value={form.mobile} onChange={e => set('mobile', e.target.value)}
+                className={inputCls()} placeholder="e.g. 9876543210" maxLength={15} />
             </div>
           </div>
         ))}
@@ -304,16 +349,96 @@ export default function AddUserPage() {
         ))}
 
         {/* Subscription */}
-        {section('Subscription', 'Duration starts from creation date', (
-          <div className="max-w-xs">
-            <label className="label-cap block mb-2">Duration (months) <Req /></label>
-            <input type="number" value={form.subscriptionDurationMonths}
-              onChange={e => set('subscriptionDurationMonths', e.target.value)}
-              className={inputCls(!!errors.subscriptionDurationMonths)} min="1" max="60" />
-            {fieldErr('subscriptionDurationMonths')}
-            <p className="text-xs text-gray-400 mt-2">
-              Active for {form.subscriptionDurationMonths} month{Number(form.subscriptionDurationMonths) !== 1 ? 's' : ''} from today
-            </p>
+        {section('Subscription Plan', 'Select the membership tier for this member', (
+          <div className="space-y-3">
+            {plans.length === 0 ? (
+              <div className="text-center py-6 text-sm text-gray-400">
+                No active plans found.{' '}
+                <a href="/subscriptions" className="font-bold text-gray-600 hover:underline">
+                  Create a plan first →
+                </a>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {plans.map(plan => {
+                  const isSelected = selectedPlanId === plan._id;
+                  const durationLabel = plan.durationDays % 30 === 0
+                    ? `${plan.durationDays / 30} month${plan.durationDays / 30 !== 1 ? 's' : ''}`
+                    : `${plan.durationDays} days`;
+                  return (
+                    <button
+                      key={plan._id}
+                      type="button"
+                      onClick={() => setSelectedPlanId(plan._id)}
+                      className={`w-full flex items-start gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all ${
+                        isSelected ? 'border-gray-900 bg-gray-50' : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                    >
+                      <div className="w-3 h-3 rounded-full mt-1 shrink-0" style={{ background: plan.color }} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-black text-gray-900">{plan.name}</span>
+                          <span className="text-sm font-black text-gray-900">₹{plan.price.toLocaleString('en-IN')}</span>
+                        </div>
+                        <p className="text-xs text-gray-400 mt-0.5">{durationLabel}</p>
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {plan.features.aiWorkoutPlan && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-black text-[#00E676]"><Dumbbell className="w-2.5 h-2.5" />AI Workout</span>}
+                          {plan.features.aiDietPlan    && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-600"><Salad className="w-2.5 h-2.5" />AI Diet</span>}
+                          {plan.features.leaveRequests && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600"><CalendarOff className="w-2.5 h-2.5" />Leave</span>}
+                          {plan.features.progressTracking && <span className="inline-flex items-center gap-0.5 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-green-50 text-green-600"><TrendingUp className="w-2.5 h-2.5" />Progress</span>}
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="w-5 h-5 rounded-full bg-black flex items-center justify-center shrink-0 mt-0.5">
+                          <Check className="w-3 h-3 text-[#00E676]" />
+                        </div>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+            {errors.plan && <p className="text-xs text-red-500 font-semibold">{errors.plan}</p>}
+
+            {/* Payment received toggle */}
+            {selectedPlanId && (() => {
+              const plan = plans.find(p => p._id === selectedPlanId);
+              return plan ? (
+                <div className="pt-3 border-t border-gray-100 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <IndianRupee className="w-4 h-4 text-gray-500" />
+                      <div>
+                        <p className="text-sm font-black text-gray-900">Payment Received</p>
+                        <p className="text-xs text-gray-400">₹{plan.price.toLocaleString('en-IN')} — mark as received or pending</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentReceived(v => !v)}
+                      className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${paymentReceived ? 'bg-black' : 'bg-gray-200'}`}
+                    >
+                      <span className={`absolute top-1 left-1 w-4 h-4 rounded-full bg-white transition-transform ${paymentReceived ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                  {!paymentReceived && (
+                    <p className="text-xs text-amber-600 bg-amber-50 rounded-xl px-3 py-2 font-semibold">
+                      Payment will be marked as <strong>pending</strong>. You can record it later from the Payments page.
+                    </p>
+                  )}
+                  {(plan.features.aiWorkoutPlan || plan.features.aiDietPlan) && (
+                    <div className="flex items-start gap-2 bg-[#00E676]/5 border border-[#00E676]/20 rounded-xl px-3 py-2.5">
+                      <Info className="w-4 h-4 text-[#00E676] flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-gray-600">
+                        A plan generation request will be <strong>automatically created</strong> for{' '}
+                        {[plan.features.aiWorkoutPlan && 'AI Workout', plan.features.aiDietPlan && 'AI Diet'].filter(Boolean).join(' + ')}.
+                        It will appear in <strong>Requests</strong> for you to generate.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ) : null;
+            })()}
           </div>
         ))}
 

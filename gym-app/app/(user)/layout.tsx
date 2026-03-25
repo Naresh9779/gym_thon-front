@@ -1,14 +1,18 @@
 "use client";
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Navigation from '@/components/shared/Navigation';
 import BottomNav from '@/components/shared/BottomNav';
 import SubscriptionExpired from '@/components/user/SubscriptionExpired';
 import { useAuth } from '@/hooks/useAuth';
 
+// These pages remain accessible even with an expired/missing subscription
+const ALLOWED_WHEN_EXPIRED = ['/profile', '/reports', '/scan', '/my-attendance'];
+
 export default function UserLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, loading } = useAuth();
 
   useEffect(() => {
@@ -32,14 +36,16 @@ export default function UserLayout({ children }: { children: React.ReactNode }) 
 
   if (!user || user.role === 'admin') return null;
 
-  const isExpired = user?.subscription?.status === 'expired';
+  // Expired = no active subscription OR status explicitly 'expired'
+  const isExpired = !user.subscription || user.subscription.status === 'expired';
+  const isAllowedRoute = ALLOWED_WHEN_EXPIRED.some(p => pathname.startsWith(p));
 
   return (
     <div className="min-h-screen bg-[#f4f4f5]">
       <Navigation />
       <main className="max-w-2xl mx-auto px-4 py-5 pb-24 sm:pb-8">
-        {isExpired ? (
-          <SubscriptionExpired endDate={user?.subscription?.endDate} />
+        {isExpired && !isAllowedRoute ? (
+          <SubscriptionExpired endDate={user.subscription?.endDate} />
         ) : (
           children
         )}

@@ -8,11 +8,13 @@ interface Props {
   id?: string | number;
   name: string;
   email?: string;
-  subscription?: { status?: string; endDate?: string; plan?: string };
+  subscription?: { status?: string; endDate?: string; planName?: string };
   isInactive?: boolean;
+  hasPendingPayment?: boolean;
+  gymStatus?: string;
 }
 
-export default function UserCard({ id, name, email, subscription, isInactive }: Props) {
+export default function UserCard({ id, name, email, subscription, isInactive, hasPendingPayment, gymStatus }: Props) {
   const initials = name
     ? name.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase()
     : 'U';
@@ -26,7 +28,7 @@ export default function UserCard({ id, name, email, subscription, isInactive }: 
     <motion.div
       variants={{ hidden: { opacity: 0, y: 12 }, show: { opacity: 1, y: 0 } }}
       whileHover={{ y: -2 }}
-      className={`bg-white rounded-2xl border p-4 hover:shadow-sm transition-all ${isInactive ? 'border-blue-100' : 'border-gray-100 hover:border-gray-200'}`}
+      className={`bg-white rounded-2xl border p-4 hover:shadow-sm transition-all ${gymStatus === 'left' ? 'border-red-200 bg-red-50/30' : hasPendingPayment ? 'border-amber-200' : isInactive ? 'border-blue-100' : 'border-gray-100 hover:border-gray-200'}`}
     >
       <div className="flex items-center gap-3">
         <div className="w-10 h-10 bg-black rounded-xl flex items-center justify-center text-[#00E676] text-sm font-black flex-shrink-0">
@@ -35,11 +37,23 @@ export default function UserCard({ id, name, email, subscription, isInactive }: 
         <div className="flex-1 min-w-0">
           <p className="font-black text-gray-900 truncate">{name}</p>
           {email && <p className="text-xs text-gray-400 truncate mt-0.5">{email}</p>}
-          {subscription?.status && (
-            <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full mt-1 ${statusColor}`}>
-              {subscription.status}
-            </span>
-          )}
+          <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+            {subscription?.status && (
+              <span className={`inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full ${statusColor}`}>
+                {subscription.status}
+              </span>
+            )}
+            {hasPendingPayment && (
+              <span className="inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-600">
+                ⏳ Payment Due
+              </span>
+            )}
+            {gymStatus === 'left' && (
+              <span className="inline-block text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-red-100 text-red-500">
+                Left Gym
+              </span>
+            )}
+          </div>
         </div>
         {id && (
           <Link

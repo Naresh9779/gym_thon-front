@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import AnalyticsCard from '@/components/admin/AnalyticsCard';
 import { useAuth } from '@/hooks/useAuth';
-import { Users, TrendingUp, Activity, ArrowRight, AlertTriangle, Clock, ClipboardList } from 'lucide-react';
+import { Users, AlertTriangle, Clock, ClipboardList, Activity, CreditCard, IndianRupee, QrCode, UserCheck } from 'lucide-react';
 
 export default function DashboardPage() {
   const { getAccessToken } = useAuth();
@@ -15,6 +15,10 @@ export default function DashboardPage() {
   const [inactiveCount, setInactiveCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [planRequests, setPlanRequests] = useState<any[]>([]);
+  const [attendanceData, setAttendanceData] = useState<{
+    attendanceEnabled: boolean;
+    summary?: { total: number; presentCount: number; currentlyIn: number };
+  } | null>(null);
 
   const loadRequests = async (token: string) => {
     const base = process.env.NEXT_PUBLIC_API_BASE_URL;
@@ -29,14 +33,15 @@ export default function DashboardPage() {
         const token = getAccessToken();
         const h = { Authorization: `Bearer ${token}` };
         const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-        const [metricsRes, usersRes, expiringRes, inactiveRes] = await Promise.all([
+        const [metricsRes, usersRes, expiringRes, inactiveRes, attendanceRes] = await Promise.all([
           fetch(`${base}/api/admin/metrics`, { headers: h }),
           fetch(`${base}/api/admin/users`, { headers: h }),
           fetch(`${base}/api/admin/users/expiring?days=7`, { headers: h }),
           fetch(`${base}/api/admin/users/inactive?days=7`, { headers: h }),
+          fetch(`${base}/api/admin/attendance/today`, { headers: h }),
         ]);
-        const [metricsJson, usersJson, expiringJson, inactiveJson] = await Promise.all([
-          metricsRes.json(), usersRes.json(), expiringRes.json(), inactiveRes.json(),
+        const [metricsJson, usersJson, expiringJson, inactiveJson, attendanceJson] = await Promise.all([
+          metricsRes.json(), usersRes.json(), expiringRes.json(), inactiveRes.json(), attendanceRes.json(),
         ]);
         if (metricsJson.ok) setMetrics(metricsJson.data);
         if (usersJson.ok) {
@@ -47,6 +52,7 @@ export default function DashboardPage() {
         }
         if (expiringJson.ok) setExpiringUsers(expiringJson.data.users || []);
         if (inactiveJson.ok) setInactiveCount(inactiveJson.data.count || 0);
+        if (attendanceJson.ok) setAttendanceData(attendanceJson.data);
         await loadRequests(token);
       } catch { /* ignore */ } finally {
         setLoading(false);
@@ -55,12 +61,11 @@ export default function DashboardPage() {
     load();
   }, [getAccessToken]);
 
-  const quickActions = [
-    { label: 'Manage Members', href: '/users', icon: Users, accent: 'text-blue-500', bg: 'bg-blue-50' },
-  ];
-
   const daysUntil = (endDate: string) =>
     Math.ceil((new Date(endDate).getTime() - Date.now()) / 86400000);
+
+  const fmtCurrency = (n: number) =>
+    n >= 100000 ? `₹${(n / 100000).toFixed(1)}L` : `₹${n.toLocaleString('en-IN')}`;
 
   return (
     <div className="space-y-5">
@@ -90,47 +95,25 @@ export default function DashboardPage() {
           </Link>
         </motion.div>
       )}
-      {!loading && inactiveCount > 0 && (
+      {!loading && metrics?.pendingCount > 0 && (
         <motion.div
           initial={{ opacity: 0, y: -8 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.05 }}
-          className="flex items-center gap-3 px-4 py-3.5 bg-blue-50 border border-blue-100 rounded-2xl"
+          transition={{ delay: 0.04 }}
+          className="flex items-center gap-3 px-4 py-3.5 bg-orange-50 border border-orange-200 rounded-2xl"
         >
-          <Clock className="w-4 h-4 text-blue-500 shrink-0" />
-          <p className="text-sm font-bold text-blue-700 flex-1">
-            {inactiveCount} member{inactiveCount !== 1 ? 's' : ''} inactive for 7+ days — consider following up
+          <CreditCard className="w-4 h-4 text-orange-500 shrink-0" />
+          <p className="text-sm font-bold text-orange-700 flex-1">
+            {metrics.pendingCount} payment{metrics.pendingCount !== 1 ? 's' : ''} pending — {fmtCurrency(metrics.pendingAmount || 0)} outstanding
           </p>
           <Link
-            href="/users?tab=inactive"
-            className="text-xs font-black text-blue-700 bg-blue-100 hover:bg-blue-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
+            href="/users?tab=pending_payment"
+            className="text-xs font-black text-orange-700 bg-orange-100 hover:bg-orange-200 px-3 py-1.5 rounded-lg transition-colors shrink-0"
           >
             View
           </Link>
         </motion.div>
       )}
-
-      {/* ── QUICK ACTIONS ── */}
-      <motion.div
-        initial={{ opacity: 0, y: -10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-        className="flex items-center gap-2 flex-wrap"
-      >
-        {quickActions.map(({ label, href, icon: Icon, accent, bg }) => (
-          <Link
-            key={href}
-            href={href}
-            className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white border border-gray-100 text-sm font-bold text-gray-700 hover:border-gray-200 hover:shadow-sm transition-all group"
-          >
-            <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${bg}`}>
-              <Icon className={`w-3.5 h-3.5 ${accent}`} />
-            </div>
-            {label}
-            <ArrowRight className="w-3.5 h-3.5 text-gray-300 group-hover:text-gray-500 transition-colors" />
-          </Link>
-        ))}
-      </motion.div>
 
       {/* ── PLAN REQUESTS ── */}
       {!loading && planRequests.length > 0 && (
@@ -151,15 +134,72 @@ export default function DashboardPage() {
 
       {/* ── METRIC CARDS ── */}
       <motion.div
-        className="grid grid-cols-2 lg:grid-cols-4 gap-3"
+        className="grid grid-cols-2 gap-3"
         initial="hidden" animate="show"
         variants={{ hidden: {}, show: { transition: { staggerChildren: 0.08 } } }}
       >
-        <AnalyticsCard title="Total Members"   value={loading ? '—' : (metrics?.usersCount ?? '—')}        subtitle="Registered"       accent="green"  loading={loading} />
-        <AnalyticsCard title="Workout Plans"   value={loading ? '—' : (metrics?.workoutPlansCount ?? '—')} subtitle="All time"         accent="blue"   loading={loading} />
-        <AnalyticsCard title="Active Workouts" value={loading ? '—' : (metrics?.activeWorkoutPlans ?? '—')} subtitle="Currently active" accent="purple" loading={loading} />
-        <AnalyticsCard title="Diet Plans"      value={loading ? '—' : (metrics?.dietPlansCount ?? '—')}    subtitle="All time"         accent="amber"  loading={loading} />
+        <AnalyticsCard
+          title="Total Members"
+          value={loading ? '—' : (metrics?.usersCount ?? '—')}
+          subtitle="Registered"
+          accent="green"
+          loading={loading}
+          href="/users"
+        />
+        <AnalyticsCard
+          title="Active Members"
+          value={loading ? '—' : (metrics?.activeSubscriptions ?? 0)}
+          subtitle="Active subscription"
+          accent="blue"
+          loading={loading}
+          href={!loading && (metrics?.activeSubscriptions ?? 0) > 0 ? '/users?tab=active' : undefined}
+        />
+        <AnalyticsCard
+          title="Revenue (MTD)"
+          value={loading ? '—' : fmtCurrency(metrics?.revenueThisMonth ?? 0)}
+          subtitle="Collected this month"
+          accent="green"
+          loading={loading}
+          href="/payments"
+        />
+        <AnalyticsCard
+          title="Pending Payments"
+          value={loading ? '—' : (metrics?.pendingCount ?? 0)}
+          subtitle={loading ? '—' : metrics?.pendingAmount > 0 ? `${fmtCurrency(metrics.pendingAmount)} outstanding` : 'All clear'}
+          accent="amber"
+          loading={loading}
+          href={!loading && (metrics?.pendingCount ?? 0) > 0 ? '/users?tab=pending_payment' : undefined}
+        />
       </motion.div>
+
+      {/* ── ATTENDANCE CARD (only if enabled) ── */}
+      {!loading && attendanceData?.attendanceEnabled && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
+          <Link href="/attendance" className="block bg-black rounded-2xl p-4 hover:bg-gray-900 transition-colors group">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-[#00E676]/20 rounded-xl flex items-center justify-center">
+                  <QrCode className="w-5 h-5 text-[#00E676]" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Today's Attendance</p>
+                  <p className="text-2xl font-black text-white mt-0.5">
+                    {attendanceData.summary?.presentCount ?? 0}
+                    <span className="text-sm font-bold text-gray-500 ml-1">/ {attendanceData.summary?.total ?? 0} members</span>
+                  </p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="flex items-center gap-1.5 justify-end">
+                  <div className="w-2 h-2 rounded-full bg-[#00E676] animate-pulse" />
+                  <span className="text-xs font-black text-[#00E676]">{attendanceData.summary?.currentlyIn ?? 0} in gym</span>
+                </div>
+                <p className="text-[10px] text-gray-500 mt-1 group-hover:text-gray-300 transition-colors">View details →</p>
+              </div>
+            </div>
+          </Link>
+        </motion.div>
+      )}
 
       {/* ── INFO CARDS ── */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -197,7 +237,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-gray-800 truncate">{u.name}</p>
-                      <p className="text-xs text-gray-400 truncate">{u.email}</p>
+                      <p className="text-xs text-gray-400 truncate">{u.subscription?.planName || 'No plan'}</p>
                     </div>
                   </div>
                   <span className={`text-[10px] font-black px-2 py-1 rounded-full shrink-0 ${
@@ -211,79 +251,53 @@ export default function DashboardPage() {
           </div>
           {expiringUsers.length > 4 && (
             <div className="px-4 pb-4">
-              <Link href="/users" className="block text-center text-xs font-bold text-gray-400 hover:text-gray-600 py-1">
+              <Link href="/users?tab=expiring" className="block text-center text-xs font-bold text-gray-400 hover:text-gray-600 py-1">
                 +{expiringUsers.length - 4} more →
               </Link>
             </div>
           )}
         </motion.div>
 
-        {/* Recent members + quick stats */}
-        <div className="space-y-4">
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-            className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
-          >
-            <div className="flex items-center gap-2 p-4 border-b border-gray-50">
-              <Activity className="w-4 h-4 text-gray-400" />
-              <h3 className="font-black text-gray-900">Recent Members</h3>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {loading ? (
-                <div className="p-4 space-y-2 animate-pulse">
-                  {[1, 2].map(i => <div key={i} className="h-10 bg-gray-100 rounded-xl" />)}
-                </div>
-              ) : recentUsers.length === 0 ? (
-                <p className="text-sm text-gray-400 text-center py-6">No members yet</p>
-              ) : recentUsers.map((u) => (
-                <Link key={u._id} href={`/users/${u._id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center text-[#00E676] text-[10px] font-black shrink-0">
-                      {u.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
-                    </div>
-                    <p className="text-sm font-bold text-gray-800 truncate">{u.name}</p>
+        {/* Recent members */}
+        <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+          className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
+        >
+          <div className="flex items-center gap-2 p-4 border-b border-gray-50">
+            <Activity className="w-4 h-4 text-gray-400" />
+            <h3 className="font-black text-gray-900">Recent Members</h3>
+          </div>
+          <div className="divide-y divide-gray-50">
+            {loading ? (
+              <div className="p-4 space-y-2 animate-pulse">
+                {[1, 2].map(i => <div key={i} className="h-10 bg-gray-100 rounded-xl" />)}
+              </div>
+            ) : recentUsers.length === 0 ? (
+              <p className="text-sm text-gray-400 text-center py-6">No members yet</p>
+            ) : recentUsers.map((u) => (
+              <Link key={u._id} href={`/users/${u._id}`} className="flex items-center justify-between px-4 py-3 hover:bg-gray-50 transition-colors">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-7 h-7 bg-black rounded-lg flex items-center justify-center text-[#00E676] text-[10px] font-black shrink-0">
+                    {u.name.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()}
                   </div>
-                  <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
-                    u.subscription?.status === 'active' ? 'bg-[#00E676]/10 text-[#00E676]' : 'bg-gray-100 text-gray-400'
-                  }`}>{u.subscription?.status || 'inactive'}</span>
-                </Link>
-              ))}
-            </div>
-            <div className="px-4 pb-3">
-              <Link href="/users" className="block text-center text-xs font-bold text-gray-400 hover:text-gray-600 py-1">
-                View all members →
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-gray-800 truncate">{u.name}</p>
+                    <p className="text-[10px] text-gray-400 truncate">{u.subscription?.planName || 'No plan'}</p>
+                  </div>
+                </div>
+                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full shrink-0 ${
+                  u.subscription?.status === 'active' ? 'bg-[#00E676]/10 text-[#00E676]' : 'bg-gray-100 text-gray-400'
+                }`}>{u.subscription?.status || 'no plan'}</span>
               </Link>
-            </div>
-          </motion.div>
+            ))}
+          </div>
+          <div className="px-4 pb-3">
+            <Link href="/users" className="block text-center text-xs font-bold text-gray-400 hover:text-gray-600 py-1">
+              View all members →
+            </Link>
+          </div>
+        </motion.div>
 
-          <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
-            className="bg-white rounded-2xl border border-gray-100 overflow-hidden"
-          >
-            <div className="flex items-center gap-2 p-4 border-b border-gray-50">
-              <TrendingUp className="w-4 h-4 text-gray-400" />
-              <h3 className="font-black text-gray-900">Quick Stats</h3>
-            </div>
-            <div className="divide-y divide-gray-50">
-              {loading ? (
-                <div className="p-3 space-y-2 animate-pulse">
-                  {[1, 2, 3].map(i => <div key={i} className="h-8 bg-gray-100 rounded-xl" />)}
-                </div>
-              ) : [
-                { label: 'Total Members',   val: metrics?.usersCount ?? 0,       accent: 'text-[#00E676]' },
-                { label: 'Workout Plans',   val: metrics?.workoutPlansCount ?? 0, accent: 'text-blue-500' },
-                { label: 'Diet Plans',      val: metrics?.dietPlansCount ?? 0,    accent: 'text-[#FF6D00]' },
-                { label: 'Expiring 7 days', val: expiringUsers.length,            accent: expiringUsers.length > 0 ? 'text-amber-500' : 'text-gray-900' },
-                { label: 'Inactive 7 days', val: inactiveCount,                   accent: inactiveCount > 0 ? 'text-blue-500' : 'text-gray-900' },
-              ].map(s => (
-                <div key={s.label} className="flex items-center justify-between px-4 py-2.5">
-                  <p className="text-sm font-bold text-gray-600">{s.label}</p>
-                  <p className={`text-base font-black num ${s.accent}`}>{s.val}</p>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        </div>
       </div>
-
     </div>
   );
 }

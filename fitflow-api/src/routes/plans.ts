@@ -4,6 +4,7 @@ import { authenticate } from '../middleware/auth';
 import { checkInSchema, getMondayOf } from '../utils/schemas';
 import { requireActiveSubscription } from '../middleware/subscription';
 import User from '../models/User';
+import Subscription, { ISubscriptionFeatures } from '../models/Subscription';
 import WorkoutPlan from '../models/WorkoutPlan';
 import DietPlan from '../models/DietPlan';
 import PlanRequest from '../models/PlanRequest';
@@ -18,6 +19,15 @@ async function getPlanStatus(userId: string) {
   const now = new Date(); now.setHours(0, 0, 0, 0);
   const renewCutoff = new Date(now);
   renewCutoff.setDate(renewCutoff.getDate() + RENEW_WINDOW_DAYS);
+
+  const activeSub = await Subscription.findOne({
+    userId,
+    status:  { $in: ['active', 'trial'] },
+    endDate: { $gt: now },
+  }).lean();
+  const features = (activeSub?.features ?? {}) as ISubscriptionFeatures;
+  const canUseWorkout = features.aiWorkoutPlan !== false;
+  const canUseDiet    = features.aiDietPlan    !== false;
 
   // Workout: active and NOT within renewal window
   const activeWorkout = await WorkoutPlan.findOne({
@@ -60,10 +70,12 @@ async function getPlanStatus(userId: string) {
     : null;
 
   const hasNoWorkout = !activeWorkout && !expiringWorkout;
-  const workoutNeedsRenewal = hasNoWorkout || !!expiringWorkout;
+  // Gate by feature flags: if aiWorkoutPlan is disabled the user cannot request workout plans
+  const workoutNeedsRenewal = canUseWorkout && (hasNoWorkout || !!expiringWorkout);
 
   // Diet needs renewal: no plan this week, OR we're at week end and no plan for next week
-  const dietNeedsRenewal = !thisDietPlan || (isWeekEnd && !nextDietPlan);
+  // Gate by feature flags: if aiDietPlan is disabled the user cannot request diet plans
+  const dietNeedsRenewal = canUseDiet && (!thisDietPlan || (isWeekEnd && !nextDietPlan));
 
   const canCheckIn = workoutNeedsRenewal || dietNeedsRenewal;
 
@@ -71,6 +83,7 @@ async function getPlanStatus(userId: string) {
     canCheckIn,
     workoutNeedsRenewal,
     dietNeedsRenewal,
+    features: { aiWorkoutPlan: canUseWorkout, aiDietPlan: canUseDiet },
     workoutDaysLeft,
     workoutEndDate: expiringWorkout ? (expiringWorkout as any).endDate : activeWorkout ? (activeWorkout as any).endDate : null,
     thisDietPlanExists: !!thisDietPlan,

@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import User from '../models/User';
+import Subscription from '../models/Subscription';
 import WorkoutPlan from '../models/WorkoutPlan';
 
 /**
@@ -32,12 +33,12 @@ class PlanSchedulerService {
     try {
       console.log('[PlanScheduler] Checking for expired subscriptions...');
 
-      const result = await User.updateMany(
+      const result = await Subscription.updateMany(
         {
-          'subscription.status': { $in: ['active', 'trial'] },
-          'subscription.endDate': { $lt: new Date() },
+          status:  { $in: ['active', 'trial'] },
+          endDate: { $lt: new Date() },
         },
-        { $set: { 'subscription.status': 'expired' } }
+        { $set: { status: 'expired' } },
       );
 
       console.log(`[PlanScheduler] ✓ Auto-expired ${result.modifiedCount} subscriptions`);
