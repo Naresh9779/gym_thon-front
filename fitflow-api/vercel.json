@@ -14,7 +14,7 @@
     },
     {
       "path": "/api/cron/attendance-auto-markout",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 23 * * *"
     }
   ]
 }
