@@ -1935,7 +1935,7 @@ router.patch('/payments/:id/mark-received', async (req, res) => {
   } catch { return res.status(500).json({ ok: false, error: { message: 'Failed to mark payment as received' } }); }
 });
 
-// PATCH /api/admin/payments/:id/cancel — void a pending payment
+// PATCH /api/admin/payments/:id/cancel — void a pending payment + expire linked subscription
 router.patch('/payments/:id/cancel', async (req, res) => {
   try {
     const payment = await Payment.findById(req.params.id);
@@ -1943,6 +1943,11 @@ router.patch('/payments/:id/cancel', async (req, res) => {
     if ((payment as any).paymentStatus !== 'pending') return res.status(400).json({ ok: false, error: { message: 'Only pending payments can be cancelled' } });
     (payment as any).paymentStatus = 'cancelled';
     await payment.save();
+    // Expire the subscription linked to this payment
+    await Subscription.updateOne(
+      { paymentId: payment._id, status: 'active' },
+      { status: 'cancelled' }
+    );
     res.json({ ok: true });
   } catch { res.status(500).json({ ok: false, error: { message: 'Failed to cancel payment' } }); }
 });
