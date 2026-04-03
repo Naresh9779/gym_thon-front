@@ -153,9 +153,17 @@ export default function AdminUsersPage() {
     <div className="space-y-5">
 
       {/* ── HEADER ── */}
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <p className="label-cap mb-1">Admin</p>
-        <h1 className="text-3xl font-black text-gray-900 tracking-tight">Members</h1>
+      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="flex items-start justify-between gap-3">
+        <div>
+          <p className="label-cap mb-1">Admin</p>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Members</h1>
+        </div>
+        <Link
+          href="/users/add"
+          className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-black text-[#00E676] text-sm font-black hover:bg-gray-900 transition-colors shrink-0 mt-1"
+        >
+          <UserPlus className="w-4 h-4" /> Add Member
+        </Link>
       </motion.div>
 
       {/* ── PENDING PAYMENT ALERT ── */}
@@ -327,13 +335,6 @@ export default function AdminUsersPage() {
           </div>
         )}
 
-        {/* Add member */}
-        <Link
-          href="/users/add"
-          className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-black text-[#00E676] text-xs font-black hover:bg-gray-900 transition-colors shrink-0"
-        >
-          <UserPlus className="w-3.5 h-3.5" /> Add
-        </Link>
       </div>
 
       {/* ── PENDING PAYMENT NOTICE ── */}
