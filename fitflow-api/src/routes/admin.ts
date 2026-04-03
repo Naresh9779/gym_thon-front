@@ -499,16 +499,18 @@ router.get('/metrics', async (_req, res) => {
   try {
     const thisMonthStart = new Date(); thisMonthStart.setDate(1); thisMonthStart.setHours(0, 0, 0, 0);
 
+    const nonAdminUserIds = await User.distinct('_id', { role: { $ne: 'admin' } });
+
     const [
       usersCount, workoutPlansCount, activeWorkoutPlans, dietPlansCount,
       activeSubscriptions,
       revenueAgg, pendingAgg, pendingCount,
     ] = await Promise.all([
-      User.countDocuments(),
+      User.countDocuments({ role: { $ne: 'admin' } }),
       WorkoutPlan.countDocuments(),
       WorkoutPlan.countDocuments({ status: 'active' }),
       DietPlan.countDocuments(),
-      Subscription.countDocuments({ status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() } }),
+      Subscription.countDocuments({ status: { $in: ['active', 'trial'] }, endDate: { $gt: new Date() }, userId: { $in: nonAdminUserIds } }),
       Payment.aggregate([{ $match: { paymentStatus: 'received', paidAt: { $gte: thisMonthStart } } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       Payment.aggregate([{ $match: { paymentStatus: 'pending' } }, { $group: { _id: null, total: { $sum: '$amount' } } }]),
       Payment.countDocuments({ paymentStatus: 'pending' }),

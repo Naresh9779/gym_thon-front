@@ -174,7 +174,7 @@ export default function AddUserPage() {
     : null;
 
   return (
-    <div className="space-y-5 max-w-3xl">
+    <div className="space-y-5 max-w-3xl w-full">
       <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
         <p className="label-cap mb-1">Admin</p>
         <h1 className="text-3xl font-black text-gray-900 tracking-tight">Add Member</h1>
@@ -235,7 +235,7 @@ export default function AddUserPage() {
 
         {/* Physical */}
         {section('Physical Info', 'Used for AI plan generation', (
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {([
               { key: 'age' as const,    label: 'Age',    unit: 'yrs', placeholder: '25', min: 10,  max: 100 },
               { key: 'weight' as const, label: 'Weight', unit: 'kg',  placeholder: '75', min: 20,  max: 300 },
@@ -443,7 +443,7 @@ export default function AddUserPage() {
         ))}
 
         {/* Actions */}
-        <div className="flex gap-3 justify-end pb-6">
+        <div className="flex flex-wrap gap-3 justify-end pb-6">
           <button type="button" onClick={() => router.back()}
             className="px-5 py-2.5 rounded-xl border-2 border-gray-200 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors">
             Cancel
